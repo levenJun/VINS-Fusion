@@ -80,6 +80,15 @@ public:
     */
     EquidistantCamera(const Parameters& params);
 
+    virtual void printParams(){
+        std::cout << "mParameters, with=" << imageWidth() << ",heigth=" << imageHeight()
+                    << ",m_k2=" << mParameters.k2() << ",m_k3=" << mParameters.k3()
+                    << ",m_k4=" << mParameters.k4() << ",m_k5=" << mParameters.k5()
+                    << ",m_mu=" << mParameters.mu() << ",m_mv=" << mParameters.mv()
+                    << ",m_u0=" << mParameters.u0() << ",m_v0=" << mParameters.v0()
+                    << std::endl;
+    }
+
     Camera::ModelType modelType(void) const;
     const std::string& cameraName(void) const;
     int imageWidth(void) const;

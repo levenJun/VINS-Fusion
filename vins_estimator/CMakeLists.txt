@@ -62,3 +62,5 @@ target_link_libraries(kitti_odom_test vins_lib)
 add_executable(kitti_gps_test src/KITTIGPSTest.cpp)
 target_link_libraries(kitti_gps_test vins_lib) 
 
+add_executable(vslam_test src/vslamNodeTest.cpp src/dataset_io/HeadDataReader.cpp src/dataset_io/tools.cpp)
+target_link_libraries(vslam_test vins_lib)

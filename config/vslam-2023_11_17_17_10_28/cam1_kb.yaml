@@ -1,6 +1,6 @@
 %YAML:1.0
 ---
-model_type: kannala_brandt
+model_type: KANNALA_BRANDT
 camera_name: camera1
 image_width: 640
 image_height: 480

@@ -5,6 +5,7 @@
 #include <eigen3/Eigen/Dense>
 #include <opencv2/core/core.hpp>
 #include <vector>
+#include <iostream>
 
 namespace camodocal
 {
@@ -53,6 +54,9 @@ class Camera
         int m_imageHeight;
     };
 
+    virtual void printParams(){
+        std::cout << "base Camera" << std::endl;
+    }
     virtual ModelType modelType( void ) const           = 0;
     virtual const std::string& cameraName( void ) const = 0;
     virtual int imageWidth( void ) const                = 0;
