@@ -706,12 +706,12 @@ bool Estimator::initialStructure()
         cv::Rodrigues(rvec, r);
         MatrixXd R_pnp,tmp_R_pnp;
         cv::cv2eigen(r, tmp_R_pnp);
-        R_pnp = tmp_R_pnp.transpose();
+        R_pnp = tmp_R_pnp.transpose(); //右乘R
         MatrixXd T_pnp;
         cv::cv2eigen(t, T_pnp);
-        T_pnp = R_pnp * (-T_pnp);
-        frame_it->second.R = R_pnp * RIC[0].transpose();
-        frame_it->second.T = T_pnp;
+        T_pnp = R_pnp * (-T_pnp);       //右乘t
+        frame_it->second.R = R_pnp * RIC[0].transpose();//从c系转到i系描述
+        frame_it->second.T = T_pnp;                     //从c系转到i系描述
     }
     if (visualInitialAlign())
         return true;
@@ -791,6 +791,7 @@ bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
     {
         vector<pair<Vector3d, Vector3d>> corres;
         corres = f_manager.getCorresponding(i, WINDOW_SIZE);
+        //计算z=1平面上的平均视差 (像素/f)
         if (corres.size() > 20)
         {
             double sum_parallax = 0;

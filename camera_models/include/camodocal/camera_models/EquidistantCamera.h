@@ -59,10 +59,10 @@ public:
         double m_k4;
         double m_k5;
 
-        double m_mu;
-        double m_mv;
-        double m_u0;
-        double m_v0;
+        double m_mu;//fx
+        double m_mv;//fy
+        double m_u0;//cx
+        double m_v0;//cy
     };
 
     EquidistantCamera();
