@@ -13,6 +13,9 @@ InputYesOrExit()
 pathConfigFile="/home/delljun/p2/3-slam/7-1-vins-fusion/1-ws-ori/src/VINS-Fusion-2401/config/euroc/euroc_stereo_imu_config.yaml"
 pathDataset='/media/delljun/Bubby/data2/datasets/EuRoC/V1_03_difficult.bag'
 
+# pathConfigFile="/home/delljun/p2/3-slam/7-1-vins-fusion/1-ws-ori/src/VINS-Fusion-2401/config/euroc/euroc_stereo_imu_config.yaml"
+# pathDataset='/media/delljun/Bubby/data2/datasets/EuRoC/V2_03_difficult.bag'
+
 echo "test vins by:$pathDataset"
 
 time=$(date "+%Y%m%d_%H%M%S")

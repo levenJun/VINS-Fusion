@@ -414,6 +414,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	Eigen::Vector3d relative_t;
 	Quaterniond relative_q;
 	double relative_yaw;
+	cout << "stamp=," << time_stamp << ",kf=," << index  <<  ",findConnection, matched_2d_cur1=," << matched_2d_cur.size() << endl;
 	if ((int)matched_2d_cur.size() > MIN_LOOP_NUM)
 	{
 		status.clear();
@@ -479,7 +480,8 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	        }
 	    #endif
 	}
-
+	
+	cout << "findConnection, matched_2d_cur2=," << matched_2d_cur.size() << endl;
 	if ((int)matched_2d_cur.size() > MIN_LOOP_NUM)
 	{
 	    relative_t = PnP_R_old.transpose() * (origin_vio_T - PnP_T_old);
@@ -487,7 +489,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	    relative_yaw = Utility::normalizeAngle(Utility::R2ypr(origin_vio_R).x() - Utility::R2ypr(PnP_R_old).x());
 	    //printf("PNP relative\n");
 	    //cout << "pnp relative_t " << relative_t.transpose() << endl;
-	    //cout << "pnp relative_yaw " << relative_yaw << endl;
+	    cout << "pnp relative_yaw " << relative_yaw << ", t_n=," << relative_t.norm() << endl;
 	    if (abs(relative_yaw) < 30.0 && relative_t.norm() < 20.0)
 	    {
 

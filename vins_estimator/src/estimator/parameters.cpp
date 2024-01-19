@@ -99,7 +99,22 @@ void readParameters(std::string config_file)
         ACC_W = fsSettings["acc_w"];
         GYR_N = fsSettings["gyr_n"];
         GYR_W = fsSettings["gyr_w"];
-        G.z() = fsSettings["g_norm"];
+        G.z() = fsSettings["g_norm"];            
+        std::cout << "ori:ACC_N=," << ACC_N << ",ACC_W=," << ACC_W << ",GYR_N=," << GYR_N << ",GYR_W=," << GYR_W << std::endl;
+
+        const int fixImuNoiseInt = fsSettings["fixImuNoise"];
+        const bool fixImuNoise = fixImuNoiseInt == 1;//vslam的Imu噪声参数需要作fix单位
+        if(fixImuNoise){
+            const int hz = 1000;
+            const double sqrt_hz = std::sqrt((double)hz);
+            const double sqrt_hz_inv = 1.0/sqrt_hz;
+            ACC_N *= sqrt_hz;
+            ACC_W /= sqrt_hz;
+            GYR_N *= sqrt_hz;
+            GYR_W /= sqrt_hz;
+            std::cout << "fixImuNoise: ACC_N=," << ACC_N << ",ACC_W=," << ACC_W << ",GYR_N=," << GYR_N << ",GYR_W=," << GYR_W << std::endl;
+        }
+
     }
 
     SOLVER_TIME = fsSettings["max_solver_time"];

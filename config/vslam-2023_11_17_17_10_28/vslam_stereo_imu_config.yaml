@@ -3,7 +3,7 @@
 #common parameters
 #support: 1 imu 1 cam; 1 imu 2 cam: 2 cam; 
 imu: 1         
-num_of_cam: 2  
+num_of_cam: 2
 
 imu_topic: "/imu0"
 image0_topic: "/cam0/image_raw"
@@ -42,8 +42,10 @@ body_T_cam1: !!opencv-matrix
 multiple_thread: 1
 
 #feature traker paprameters
-max_cnt: 350            # max feature number in feature tracking
-min_dist: 20            # min distance between two features 
+# max_cnt: 350            # max feature number in feature tracking
+# min_dist: 20            # min distance between two features 
+max_cnt: 150            # max feature number in feature tracking
+min_dist: 30            # min distance between two features 
 freq: 0                # frequence (Hz) of publish tracking result. At least 10Hz for good estimation. If set 0, the frequence will be same as raw image 
 F_threshold: 1.0        # ransac threshold (pixel)
 show_track: 1           # publish tracking image as topic
@@ -64,6 +66,7 @@ gyr_n: 2.0077961527517466e-03         # gyroscope measurement noise standard dev
 acc_w: 2.8065640439532409e-04        # accelerometer bias random work noise standard deviation.  
 gyr_w: 1.2960092204266150e-05       # gyroscope bias random work noise standard deviation.  
 g_norm: 9.81007     # gravity magnitude
+fixImuNoise: 1
 
 #unsynchronization parameters
 estimate_td: 0                      # online estimate time offset between camera and imu

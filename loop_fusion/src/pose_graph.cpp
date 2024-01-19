@@ -105,6 +105,7 @@ void PoseGraph::addKeyFrame(KeyFrame* cur_kf, bool flag_detect_loop)
 
         if (cur_kf->findConnection(old_kf))
         {
+            cout << "PoseGraph::findConnection, success, cur_idx=," << cur_kf->index << ", pre_idx=," << loop_index << endl;
             if (earliest_loop_index > loop_index || earliest_loop_index == -1)
                 earliest_loop_index = loop_index;
 
@@ -359,9 +360,10 @@ int PoseGraph::detectLoop(KeyFrame* keyframe, int frame_index)
     cv::Mat loop_result;
     if (DEBUG_IMAGE)
     {
-        loop_result = compressed_image.clone();
+        cv::Mat loop_result_gray = compressed_image.clone();
+        cv::cvtColor(loop_result_gray, loop_result, cv::COLOR_GRAY2RGB);
         if (ret.size() > 0)
-            putText(loop_result, "neighbour score:" + to_string(ret[0].Score), cv::Point2f(10, 50), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255));
+            putText(loop_result,"index:" + to_string(frame_index) +  ", neighbour score:" + to_string(ret[0].Score), cv::Point2f(10, 50), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0));
     }
     // visual loop result 
     if (DEBUG_IMAGE)
@@ -370,8 +372,10 @@ int PoseGraph::detectLoop(KeyFrame* keyframe, int frame_index)
         {
             int tmp_index = ret[i].Id;
             auto it = image_pool.find(tmp_index);
-            cv::Mat tmp_image = (it->second).clone();
-            putText(tmp_image, "index:  " + to_string(tmp_index) + "loop score:" + to_string(ret[i].Score), cv::Point2f(10, 50), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255));
+            cv::Mat tmp_image;
+            cv::Mat tmp_image_gray = (it->second).clone();
+            cv::cvtColor(tmp_image_gray, tmp_image, cv::COLOR_GRAY2RGB);
+            putText(tmp_image, "index:  " + to_string(tmp_index) + "loop score:" + to_string(ret[i].Score), cv::Point2f(10, 50), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0));
             cv::hconcat(loop_result, tmp_image, loop_result);
         }
     }
@@ -394,21 +398,45 @@ int PoseGraph::detectLoop(KeyFrame* keyframe, int frame_index)
             }
 
         }
-/*
+
     if (DEBUG_IMAGE)
     {
         cv::imshow("loop_result", loop_result);
         cv::waitKey(20);
     }
-*/
+
     if (find_loop && frame_index > 50)
     {
+        cv::Mat loop_result_fine;        
+        if(DEBUG_IMAGE){
+            cv::Mat loop_result_gray = compressed_image.clone();
+            cv::cvtColor(loop_result_gray, loop_result_fine, cv::COLOR_GRAY2RGB);
+            putText(loop_result_fine,"index:" + to_string(frame_index) +  ", neighbour score:" + to_string(ret[0].Score), cv::Point2f(10, 50), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0));            
+        }
+
         int min_index = -1;
         for (unsigned int i = 0; i < ret.size(); i++)
         {
             if (min_index == -1 || (ret[i].Id < min_index && ret[i].Score > 0.015))
+            {
                 min_index = ret[i].Id;
+
+                if(DEBUG_IMAGE){
+                    auto it = image_pool.find(min_index);
+                    cv::Mat tmp_image;
+                    cv::Mat tmp_image_gray = (it->second).clone();
+                    cv::cvtColor(tmp_image_gray, tmp_image, cv::COLOR_GRAY2RGB);
+                    putText(tmp_image, "index:  " + to_string(min_index) + "loop score:" + to_string(ret[i].Score), cv::Point2f(10, 50), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0));
+                    cv::hconcat(loop_result_fine, tmp_image, loop_result_fine);
+                }
+            }
         }
+
+        if(DEBUG_IMAGE){
+            cv::imshow("loop_result_fine", loop_result_fine);
+            cv::waitKey(20);            
+        }
+
         return min_index;
     }
     else

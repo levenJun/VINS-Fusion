@@ -179,7 +179,8 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
     
     if(MULTIPLE_THREAD)  
     {     
-        if(inputImageCnt % 2 == 0)
+        // if(inputImageCnt % 2 == 0)
+        if(inputImageCnt % 1 == 0)
         {
             mBuf.lock();
             featureBuf.push(make_pair(t, featureFrame));
@@ -280,6 +281,7 @@ void Estimator::processMeasurements()
         {
             feature = featureBuf.front();
             curTime = feature.first + td;
+            cout << "processMeasurements, time=," << curTime << endl;
             while(1)
             {
                 if ((!USE_IMU  || IMUAvailable(feature.first + td)))
@@ -1586,6 +1588,10 @@ void Estimator::fastPredictIMU(double t, Eigen::Vector3d linear_acceleration, Ei
     latest_gyr_0 = angular_velocity;
 }
 
+std::string EigenVector3dToStr(const Eigen::Vector3d& v3d){
+    return std::to_string(v3d(0)) + "," + std::to_string(v3d(1)) + "," + std::to_string(v3d(2));
+};
+
 void Estimator::updateLatestStates()
 {
     mPropagate.lock();
@@ -1610,5 +1616,13 @@ void Estimator::updateLatestStates()
         tmp_accBuf.pop();
         tmp_gyrBuf.pop();
     }
+
+    cout << "latest_time=," << latest_time << ",latest_P=," << EigenVector3dToStr(latest_P)
+            << ",latest_Q=," << latest_Q.coeffs()(0) << "," << latest_Q.coeffs()(1) << "," << latest_Q.coeffs()(2) << "," << latest_Q.coeffs()(3)
+            << ",latest_V=," << EigenVector3dToStr(latest_V)
+            << ",latest_Ba=," << EigenVector3dToStr(latest_Ba)
+            << ",latest_Bg=," << EigenVector3dToStr(latest_Bg)
+            << endl;
+
     mPropagate.unlock();
 }

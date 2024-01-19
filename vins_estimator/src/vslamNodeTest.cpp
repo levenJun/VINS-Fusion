@@ -35,6 +35,8 @@
 // #include <System.h>
 #include "dataset_io/HeadDataReader.h"
 
+ros::Publisher pub_camRawImg0, pub_camRawImg1;
+
 std::shared_ptr<DATA_READER::HeadDataReader> mpHeadDataReader = nullptr;
 
 Estimator estimator;
@@ -128,7 +130,8 @@ void sync_process()
                 cerr << endl << "Failed to load image at: "
                      <<  data_head.videoFrame.stamp << endl;
                 continue;
-            }
+            }        
+
             if(false){
                 // clahe
                 clahe->apply(imLeft,imLeft);
@@ -148,6 +151,28 @@ void sync_process()
                 meanRight=cv::mean(imRight);
                 float scaleRight=128.0/meanRight[0];
                 imRight=(imRight)*scaleRight;
+            }
+
+            {
+                //将图片发布出去
+                sensor_msgs::ImagePtr msgImgCam0 = cv_bridge::CvImage(std_msgs::Header(), "mono8", imLeft).toImageMsg();
+                msgImgCam0->header.stamp.fromSec(tframe);
+                // // msgImgCam0->header.frame_id = "cam0";
+                // msgImgCam0->height = 480;
+                // msgImgCam0->width = 640;
+                // msgImgCam0->step = 640;
+
+                // {
+                //     cout << "print img_msg info:" << endl
+                //             << "encoding:" << msgImgCam0->encoding << endl
+                //             << "header:" << msgImgCam0->header << endl
+                //             << "height:" << msgImgCam0->height << endl
+                //             << "width:" << msgImgCam0->width << endl
+                //             << "is_bigendian:" << msgImgCam0->is_bigendian << endl
+                //             << "step:" << msgImgCam0->step << endl;
+                // }
+
+                pub_camRawImg0.publish(msgImgCam0);
             }
 
             // m_buf.unlock();
@@ -346,6 +371,8 @@ int main(int argc, char **argv)
     ROS_WARN("waiting for image and imu...");
 
     registerPub(n);
+    pub_camRawImg0 = n.advertise<sensor_msgs::Image>(IMAGE0_TOPIC, 10);
+    pub_camRawImg1 = n.advertise<sensor_msgs::Image>(IMAGE1_TOPIC, 10);
 
     // ros::Subscriber sub_imu;
     // if(USE_IMU)
