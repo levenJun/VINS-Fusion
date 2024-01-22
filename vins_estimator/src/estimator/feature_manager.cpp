@@ -289,8 +289,8 @@ void FeatureManager::initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs
         if(solvePoseByPnP(RCam, PCam, pts2D, pts3D))
         {
             // trans to w_T_imu
-            Rs[frameCnt] = RCam * ric[0].transpose(); 
-            Ps[frameCnt] = -RCam * ric[0].transpose() * tic[0] + PCam;
+            Rs[frameCnt] = RCam * ric[0].transpose();                       //已经转到imu系描述了
+            Ps[frameCnt] = -RCam * ric[0].transpose() * tic[0] + PCam;      //已经转到imu系描述了
 
             Eigen::Quaterniond Q(Rs[frameCnt]);
             //cout << "frameCnt: " << frameCnt <<  " pnp Q " << Q.w() << " " << Q.vec().transpose() << endl;

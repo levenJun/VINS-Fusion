@@ -485,27 +485,31 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
         if(STEREO && USE_IMU)
         {
             f_manager.initFramePoseByPnP(frame_count, Ps, Rs, tic, ric);
+            //此处应该执行全量BA,优化得到当前curF的pose
             f_manager.triangulate(frame_count, Ps, Rs, tic, ric);
+            //此处应该执行全量BA,同时优化得到当前curF的pose和特征点P坐标
             if (frame_count == WINDOW_SIZE)
             {
                 map<double, ImageFrame>::iterator frame_it;
                 int i = 0;
                 for (frame_it = all_image_frame.begin(); frame_it != all_image_frame.end(); frame_it++)
                 {
-                    frame_it->second.R = Rs[i];
-                    frame_it->second.T = Ps[i];
+                    frame_it->second.R = Rs[i];//此处已经是imu系的R了
+                    frame_it->second.T = Ps[i];//此处已经是imu系的t了
                     i++;
                 }
-                solveGyroscopeBias(all_image_frame, Bgs);
-                for (int i = 0; i <= WINDOW_SIZE; i++)
-                {
-                    pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
+                
+                bool result = visualInitialAlignIgnoreScale();
+
+                if(result){
+                    optimization();
+                    updateLatestStates();
+                    solver_flag = NON_LINEAR;
+                    slideWindow();
+                    ROS_INFO("Initialization finish!");                    
+                }else{
+                    slideWindow();
                 }
-                optimization();
-                updateLatestStates();
-                solver_flag = NON_LINEAR;
-                slideWindow();
-                ROS_INFO("Initialization finish!");
             }
         }
 
@@ -779,14 +783,108 @@ bool Estimator::visualInitialAlign()
         Rs[i] = rot_diff * Rs[i];
         Vs[i] = rot_diff * Vs[i];
     }
-    ROS_DEBUG_STREAM("g0     " << g.transpose());
-    ROS_DEBUG_STREAM("my R0  " << Utility::R2ypr(Rs[0]).transpose()); 
+    std::cout << "g0     " << g.transpose() << std::endl;
+    std::cout << "my R0  " << Utility::R2ypr(Rs[0]).transpose() << std::endl;
+    // ROS_DEBUG_STREAM("g0     " << g.transpose());
+    // ROS_DEBUG_STREAM("my R0  " << Utility::R2ypr(Rs[0]).transpose()); 
 
     f_manager.clearDepth();
     f_manager.triangulate(frame_count, Ps, Rs, tic, ric);
 
+    {
+        std::cout << "acc_0=," << acc_0.transpose() << ", Ri*acc_0=," << (Rs[frame_count-1]*acc_0).transpose() << std::endl;
+    }
+
     return true;
 }
+
+bool Estimator::visualInitialAlignIgnoreScale()
+{
+    solveGyroscopeBias(all_image_frame, Bgs);
+    for (int i = 0; i <= WINDOW_SIZE; i++)
+    {
+        pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
+    }
+    //此处应该初始化所有帧的速度和重力g
+    Vector3d tmpG;
+    VectorXd x;
+    bool tmpRet = LinearAlignmentIgnorScale(all_image_frame, tmpG, x);
+
+    {
+        Matrix3d R0 = Utility::g2R(tmpG);
+        std::cout << "acc_0=," << acc_0.transpose() << ", Ri*acc_0=," << (R0*Rs[frame_count-1]*acc_0).transpose() << std::endl;
+
+        std::cout << "acc_0=," << acc_0.transpose() << std::endl;
+        std::cout << "gyr_0=," << gyr_0.transpose() << std::endl;
+        std::cout << "LinearAlignmentIgnorScale result:" << std::endl
+                    << "tmpRet=," << tmpRet << std::endl
+                    << "tmpG=," << tmpG.transpose() << std::endl
+                    << "x=" << x.transpose() << std::endl;  
+
+    }
+
+    if(!tmpRet){
+        ROS_DEBUG("solve g failed!");
+        return false;        
+    }
+
+    g = tmpG;
+
+    // change state
+    for (int i = 0; i <= frame_count; i++)
+    {
+        Matrix3d Ri = all_image_frame[Headers[i]].R;
+        Vector3d Pi = all_image_frame[Headers[i]].T;
+        Ps[i] = Pi;
+        Rs[i] = Ri;
+        all_image_frame[Headers[i]].is_key_frame = true;
+    }
+
+    // double s = (x.tail<1>())(0);
+    for (int i = 0; i <= WINDOW_SIZE; i++)
+    {
+        pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
+    }
+    // for (int i = frame_count; i >= 0; i--)
+    //     Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);
+    int kv = -1;
+    map<double, ImageFrame>::iterator frame_i;
+    for (frame_i = all_image_frame.begin(); frame_i != all_image_frame.end(); frame_i++)
+    {
+        if(frame_i->second.is_key_frame)
+        {
+            kv++;
+            Vs[kv] = frame_i->second.R * x.segment<3>(kv * 3);
+        }
+    }
+
+    Matrix3d R0 = Utility::g2R(g);
+    double yaw = Utility::R2ypr(R0 * Rs[0]).x();
+    R0 = Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;
+    g = R0 * g;
+    //Matrix3d rot_diff = R0 * Rs[0].transpose();
+    Matrix3d rot_diff = R0;
+    for (int i = 0; i <= frame_count; i++)
+    {
+        Ps[i] = rot_diff * Ps[i];
+        Rs[i] = rot_diff * Rs[i];
+        Vs[i] = rot_diff * Vs[i];
+    }
+    std::cout << "g0     " << g.transpose() << std::endl;
+    std::cout << "my R0  " << Utility::R2ypr(Rs[0]).transpose() << std::endl;
+    // ROS_DEBUG_STREAM("g0     " << g.transpose());
+    // ROS_DEBUG_STREAM("my R0  " << Utility::R2ypr(Rs[0]).transpose()); 
+
+    f_manager.clearDepth();
+    f_manager.triangulate(frame_count, Ps, Rs, tic, ric);
+
+    {
+        std::cout << "acc_0=," << acc_0.transpose() << ", Ri*acc_0=," << (Rs[frame_count-1]*acc_0).transpose() << std::endl;
+    }
+
+    return true;
+
+};
 
 bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
 {

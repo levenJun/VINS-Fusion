@@ -58,6 +58,10 @@ class Estimator
     void clearState();
     bool initialStructure();
     bool visualInitialAlign();
+
+    //双目时作不带尺度的初始化
+    bool visualInitialAlignIgnoreScale();
+
     bool relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l);
     void slideWindow();
     void slideWindowNew();

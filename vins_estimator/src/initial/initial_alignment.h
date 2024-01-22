@@ -38,3 +38,12 @@ class ImageFrame
 };
 void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs);
 bool VisualIMUAlignment(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs, Vector3d &g, VectorXd &x);
+
+/*** 
+ * @description: 不带尺度s的 速度和重力初始化
+ * @param {map<double, ImageFrame>} &all_image_frame
+ * @param {Vector3d} &g
+ * @param {VectorXd} &x
+ * @return {*}
+ */
+bool LinearAlignmentIgnorScale(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x);
