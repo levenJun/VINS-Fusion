@@ -418,6 +418,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	if ((int)matched_2d_cur.size() > MIN_LOOP_NUM)
 	{
 		status.clear();
+		//建立反向PNP估计:2d特征是历史帧,3d特征是当前帧的
 	    PnPRANSAC(matched_2d_old_norm, matched_3d, status, PnP_T_old, PnP_R_old);
 	    reduceVector(matched_2d_cur, status);
 	    reduceVector(matched_2d_old, status);
