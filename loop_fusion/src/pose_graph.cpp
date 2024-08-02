@@ -526,7 +526,7 @@ void PoseGraph::optimize4DoF()
 
                 sequence_array[i] = (*it)->sequence;
 
-                problem.AddParameterBlock(euler_array[i], 1, angle_local_parameterization);
+                problem.AddParameterBlock(euler_array[i], 1, angle_local_parameterization);//这里size固定为1,就是取3个欧拉角的第1个yaw角?实现yaw角的4dof优化.
                 problem.AddParameterBlock(t_array[i], 3);
 
                 if ((*it)->index == first_looped_index || (*it)->sequence == 0)
