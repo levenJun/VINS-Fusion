@@ -64,12 +64,13 @@ class MarginalizationInfo
     void marginalize();
     std::vector<double *> getParameterBlocks(std::unordered_map<long, double *> &addr_shift);
 
-    std::vector<ResidualBlockInfo *> factors;
-    int m, n;
-    std::unordered_map<long, int> parameter_block_size; //global size
+    std::vector<ResidualBlockInfo *> factors;           //margin约束
+    int m, n;                                           //m是margin状态总维度,n是保留状态总维度
+    std::unordered_map<long, int> parameter_block_size; //{无差别的状态 : 状态size}
     int sum_block_size;
-    std::unordered_map<long, int> parameter_block_idx; //local size
-    std::unordered_map<long, double *> parameter_block_data;
+    std::unordered_map<long, int> parameter_block_idx; //重排状态. {margin状态(前叠) + 保留状态(后叠) : 状态重排后idx}
+                                                       //重排后idx就是状态在信息矩阵中的idx
+    std::unordered_map<long, double *> parameter_block_data;  //边缘化时保留状态值x0
 
     std::vector<int> keep_block_size; //global size
     std::vector<int> keep_block_idx;  //local size

@@ -116,11 +116,13 @@ void MarginalizationInfo::addResidualBlockInfo(ResidualBlockInfo *residual_block
     }
 }
 
+//所有边缘观测约束,全部计算一遍残差和雅可比
+//并且所有的涉及的状态全部都新建一个内存副本,由一个std::map管理
 void MarginalizationInfo::preMarginalize()
 {
     for (auto it : factors)
     {
-        it->Evaluate();
+        it->Evaluate(); //所有margin约束,全部无差别计算一遍残差和雅可比
 
         std::vector<int> block_sizes = it->cost_function->parameter_block_sizes();
         for (int i = 0; i < static_cast<int>(block_sizes.size()); i++)
@@ -147,25 +149,29 @@ int MarginalizationInfo::globalSize(int size) const
     return size == 6 ? 7 : size;
 }
 
+//将margin约束的雅可比和残差重新排列(margin状态在前,保留状态在后), 并填充得到新的信息矩阵A和b
 void* ThreadsConstructA(void* threadsstruct)
 {
     ThreadsStruct* p = ((ThreadsStruct*)threadsstruct);
     for (auto it : p->sub_factors)
     {
-        for (int i = 0; i < static_cast<int>(it->parameter_blocks.size()); i++)
+        for (int i = 0; i < static_cast<int>(it->parameter_blocks.size()); i++)//下面循环是it约束对第i个参数的处理
         {
+            //parameter_block_idx已经将margin重排到前,保留重排到后,idx_i是重排后排序
             int idx_i = p->parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[i])];
             int size_i = p->parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[i])];
             if (size_i == 7)
                 size_i = 6;
             Eigen::MatrixXd jacobian_i = it->jacobians[i].leftCols(size_i);
-            for (int j = i; j < static_cast<int>(it->parameter_blocks.size()); j++)
+            for (int j = i; j < static_cast<int>(it->parameter_blocks.size()); j++)//下面循环是it约束对第j个参数的处理
             {
+                //parameter_block_idx已经将margin重排到前,保留重排到后,idx_j是重排后排序
                 int idx_j = p->parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[j])];
                 int size_j = p->parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[j])];
                 if (size_j == 7)
                     size_j = 6;
                 Eigen::MatrixXd jacobian_j = it->jacobians[j].leftCols(size_j);
+                //直接按照重排后序号填充A
                 if (i == j)
                     p->A.block(idx_i, idx_j, size_i, size_j) += jacobian_i.transpose() * jacobian_j;
                 else
@@ -174,6 +180,7 @@ void* ThreadsConstructA(void* threadsstruct)
                     p->A.block(idx_j, idx_i, size_j, size_i) = p->A.block(idx_i, idx_j, size_i, size_j).transpose();
                 }
             }
+            //直接按照重排后序号填充b
             p->b.segment(idx_i, size_i) += jacobian_i.transpose() * it->residuals;
         }
     }
@@ -182,6 +189,7 @@ void* ThreadsConstructA(void* threadsstruct)
 
 void MarginalizationInfo::marginalize()
 {
+    //此步骤前 parameter_block_idx 已经统计好所有margin状态
     int pos = 0;
     for (auto &it : parameter_block_idx)
     {
@@ -191,6 +199,7 @@ void MarginalizationInfo::marginalize()
 
     m = pos;
 
+    //将所有保留状态也统计进 parameter_block_idx
     for (const auto &it : parameter_block_size)
     {
         if (parameter_block_idx.find(it.first) == parameter_block_idx.end())
