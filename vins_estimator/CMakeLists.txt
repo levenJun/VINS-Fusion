@@ -30,6 +30,7 @@ find_package(Eigen3)
 include_directories(
   ${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
+  ${PROJECT_SOURCE_DIR}/Thirdparty/Sophus
 )
 
 catkin_package()
@@ -65,3 +66,6 @@ target_link_libraries(kitti_gps_test vins_lib)
 
 add_executable(vslam_test src/vslamNodeTest.cpp src/dataset_io/HeadDataReader.cpp src/dataset_io/tools.cpp)
 target_link_libraries(vslam_test vins_lib)
+
+add_executable(vslam_test3 src/vslamNodeTest3.cpp)
+target_link_libraries(vslam_test3 vins_lib)
