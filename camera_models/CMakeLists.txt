@@ -13,7 +13,8 @@ find_package(catkin REQUIRED COMPONENTS
 find_package(Boost REQUIRED COMPONENTS filesystem program_options system)
 include_directories(${Boost_INCLUDE_DIRS})
 
-find_package(OpenCV 4.2.0 REQUIRED)
+# find_package(OpenCV 4.2.0 REQUIRED)
+find_package(OpenCV 4.10.0 REQUIRED)
 message(WARNING "camera_models, OpenCV_VERSION: ${OpenCV_VERSION}")
 
 # set(EIGEN_INCLUDE_DIR "/usr/local/include/eigen3")

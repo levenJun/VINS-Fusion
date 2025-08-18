@@ -16,7 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
     camera_models
     image_transport)
 
-find_package(OpenCV 4.2.0 REQUIRED)
+# find_package(OpenCV 4.2.0 REQUIRED)
+find_package(OpenCV 4.10.0 REQUIRED)
 
 message(WARNING "OpenCV_VERSION: ${OpenCV_VERSION}")
 
