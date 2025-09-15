@@ -59,11 +59,16 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
     last_average_parallax = 0;
     new_feature_num = 0;
     long_track_num = 0;
+    //image[fid][i].first是本帧的追踪到的特征所属相机cid:有0和1的双目id
+    //image[fid][i].second是本帧的追踪到的特征 像素px等信息
+
+    //以特征MP为核心构建所有帧的观测.
+    //feature是滑窗地图所有MP点.  feature[i]是单个特征, feature[i].feature_per_frame 是FeaturePerFrame列表，记录所有帧对本特征的观测信息.
     for (auto &id_pts : image)
     {
         FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
         assert(id_pts.second[0].first == 0);
-        if(id_pts.second.size() == 2)
+        if(id_pts.second.size() == 2)//数目为2即为双目，需要添加右目观测
         {
             f_per_fra.rightObservation(id_pts.second[1].second);
             assert(id_pts.second[1].first == 1);

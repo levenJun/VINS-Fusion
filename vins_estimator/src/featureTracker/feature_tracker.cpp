@@ -258,6 +258,9 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
     for(size_t i = 0; i < cur_pts.size(); i++)
         prevLeftPtsMap[ids[i]] = cur_pts[i];
 
+    //当前帧特征追踪匹配结果[fid][cid](特征信息)
+    //featureFrame[id1][i].first是本帧的追踪到的特征所属相机cid:有0和1的双目id
+    //featureFrame[id1][i].second是本帧的追踪到的特征 像素px等信息
     map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> featureFrame;
     for (size_t i = 0; i < ids.size(); i++)
     {
