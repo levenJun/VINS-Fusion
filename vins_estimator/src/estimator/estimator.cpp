@@ -177,6 +177,8 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
         pubTrackImage(imgTrack, t);
     }
     
+    //把上面追踪到本帧的特征信息打上时间戳,缓存到队列featureBuf.
+    //然后再从哦featureBuf依次取frame特征进行后续操作.
     if(MULTIPLE_THREAD)  
     {     
         // if(inputImageCnt % 2 == 0)
