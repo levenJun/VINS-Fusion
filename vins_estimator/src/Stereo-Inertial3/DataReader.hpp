@@ -198,7 +198,8 @@ private:
         }
         std::string stampStr = fileName.substr(0, dotPos); // 截取时间戳部分
         try {
-            return std::stod(stampStr)*1.e-9; // 转换为时间戳（double）
+            // return std::stod(stampStr)*1.e-9; // 转换为时间戳（double）
+            return std::stod(stampStr); // 转换为时间戳（double）
         } catch (const std::invalid_argument& e) {
             std::cerr << "[WARN] 文件名格式错误，无法提取时间戳: " << fileName << std::endl;
             return -1.0; // 无效时间戳
@@ -298,7 +299,8 @@ private:
             }
 
             // 解析CSV行：time,gx,gy,gz,ax,ay,az
-            imu.mStamp = std::stod(tokens[0])*1.e-9;       // 时间戳
+            // imu.mStamp = std::stod(tokens[0])*1.e-9;       // 时间戳
+            imu.mStamp = std::stod(tokens[0]);       // 时间戳
             imu.vGyro(0) = std::stof(tokens[1]);    // gx
             imu.vGyro(1) = std::stof(tokens[2]);    // gy
             imu.vGyro(2) = std::stof(tokens[3]);    // gz
