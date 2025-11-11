@@ -88,6 +88,10 @@ cv::Mat getImageFromMsg(const sensor_msgs::ImageConstPtr &img_msg)
     return img;
 }
 
+std::string EigenVector3dToStr(const Eigen::Vector3d& v3d){
+    return std::to_string(v3d(0)) + "," + std::to_string(v3d(1)) + "," + std::to_string(v3d(2));
+};
+
 // extract images with same timestamp from two topics
 void sync_process()
 {
@@ -121,7 +125,7 @@ void sync_process()
             break;
         }
 
-        std::cout << "dIdx=" << dIdx << std::endl;
+        // std::cout << "dIdx=" << dIdx << std::endl;
         if (data_cam0.stamp < 1)
         {
             usleep(1);
@@ -132,7 +136,7 @@ void sync_process()
             usleep(1);
             continue;                
         }
-
+        std::cout << "dIdx=" << dIdx << std::endl;
         if(dIdx % 2 != 0){
             // continue;
         }
@@ -144,6 +148,7 @@ void sync_process()
                 estimator.inputIMU(imuOneRaw.mStamp, imuOneRaw.vAcc.cast<double>(), imuOneRaw.vGyro.cast<double>());
             }
         }
+        double timeElapsedms = -1;
         if(STEREO)
         {
             // cv::Mat image0, image1;
@@ -204,10 +209,12 @@ void sync_process()
 
                 pub_camRawImg0.publish(msgImgCam0);
             }
-
+            auto start = std::chrono::system_clock::now();
             // m_buf.unlock();
             if(!imLeft.empty() && !imRight.empty())
                 estimator.inputImage(tframe, imLeft, imRight);
+            auto end = std::chrono::system_clock::now();
+            timeElapsedms = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
         }
         else
         {
@@ -233,9 +240,78 @@ void sync_process()
                 imLeft=(imLeft)*scaleLeft;
             }
 
+            auto start = std::chrono::system_clock::now();
             // m_buf.unlock();
             if(!imLeft.empty())
                 estimator.inputImage(tframe, imLeft);
+            auto end = std::chrono::system_clock::now();
+            timeElapsedms = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+        }
+
+        {
+            bool bInited = false;
+            bInited = estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR;
+            int winMaxIdx = WINDOW_SIZE;
+            if(!bInited){
+                winMaxIdx = estimator.frame_count;
+            }
+            Eigen::Vector3d v3R = Eigen::Vector3d::Zero();
+            Eigen::Vector3d v3t = Eigen::Vector3d::Zero();
+            Eigen::Vector3d v3V = Eigen::Vector3d::Zero();
+            Eigen::Vector3d v3Ba = Eigen::Vector3d::Zero();
+            Eigen::Vector3d v3Bg = Eigen::Vector3d::Zero();
+            
+            std::vector<Eigen::Vector3d> v3Re0(NUM_OF_CAM);
+            std::vector<Eigen::Vector3d> v3te0(NUM_OF_CAM);
+            for (int cid = 0; cid < NUM_OF_CAM; cid++)
+            {
+                v3Re0[cid] = Eigen::Vector3d::Zero();
+                v3te0[cid] = Eigen::Vector3d::Zero();
+            }
+            double td = 0;
+            {
+                Eigen::Quaterniond poseQ = Eigen::Quaterniond(estimator.Rs[winMaxIdx]);
+                Sophus::SO3d poseSO3 = Sophus::SO3d(poseQ);
+                v3R = poseSO3.log();
+                v3t = estimator.Ps[winMaxIdx];
+                v3V = estimator.Vs[winMaxIdx];
+                v3Ba = estimator.Bas[winMaxIdx];
+                v3Bg = estimator.Bgs[winMaxIdx];
+
+                //计算配置文件的外參和实时外參的增量
+                for (int cid = 0; cid < NUM_OF_CAM; cid++)
+                {
+                    Eigen::Quaterniond exRicOri = Eigen::Quaterniond(RIC[cid]);
+                    Eigen::Vector3d exTicOri = TIC[cid];
+                    Sophus::SE3d exSE3Ori = Sophus::SE3d(exRicOri, exTicOri);
+
+                    Eigen::Quaterniond exRicEst = Eigen::Quaterniond(estimator.ric[cid]);
+                    Eigen::Vector3d exTicEst = estimator.tic[cid];
+                    Sophus::SE3d exSE3Est = Sophus::SE3d(exRicEst, exTicEst);
+
+                    Sophus::SE3d exSE3Diff = exSE3Ori.inverse() * exSE3Est;
+
+                    v3Re0[cid] = exSE3Diff.so3().log();
+                    v3te0[cid] = exSE3Diff.translation();
+                }
+                td = estimator.td;                
+            }
+            std::cout << "TrackStereo done, timestamp=," << std::fixed << std::setprecision(6) << data_cam0.stamp
+                        << ",mState=," << bInited
+                        << ",costms=," << timeElapsedms*1.e-3
+                        << ",v3R=," << Utility::EigenVector3dToStr(v3R) << "," << v3R.norm()
+                        << ",v3t=," << Utility::EigenVector3dToStr(v3t) << "," << v3t.norm()
+                        << ",v3V=," << Utility::EigenVector3dToStr(v3V) << "," << v3V.norm()
+                        << ",v3Ba=," << Utility::EigenVector3dToStr(v3Ba) << "," << v3Ba.norm()
+                        << ",v3Bg=," << Utility::EigenVector3dToStr(v3Bg) << "," << v3Bg.norm()
+                        << ",td=," << td;
+
+            for (int cid = 0; cid < NUM_OF_CAM; cid++)
+            {
+                std::cout << ",deltaExI=," << cid << ",v3Re0=," << Utility::EigenVector3dToStr(v3Re0[cid]) << "," << v3Re0[cid].norm()
+                            << ",v3te0=," << Utility::EigenVector3dToStr(v3te0[cid]) << "," << v3te0[cid].norm();
+            }
+            std::cout << std::endl;
         }
         if(mHelperDataSaver){
             if(estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR){

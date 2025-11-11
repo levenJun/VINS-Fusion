@@ -290,7 +290,7 @@ void Estimator::processMeasurements()
                     break;
                 else
                 {
-                    printf("wait for imu ... \n");
+                    // printf("wait for imu ... \n");//打印数据太多
                     if (! MULTIPLE_THREAD)
                         return;
                     std::chrono::milliseconds dura(5);
@@ -1688,9 +1688,9 @@ void Estimator::fastPredictIMU(double t, Eigen::Vector3d linear_acceleration, Ei
     latest_gyr_0 = angular_velocity;
 }
 
-std::string EigenVector3dToStr(const Eigen::Vector3d& v3d){
-    return std::to_string(v3d(0)) + "," + std::to_string(v3d(1)) + "," + std::to_string(v3d(2));
-};
+// std::string EigenVector3dToStr(const Eigen::Vector3d& v3d){
+//     return std::to_string(v3d(0)) + "," + std::to_string(v3d(1)) + "," + std::to_string(v3d(2));
+// };
 
 void Estimator::updateLatestStates()
 {
@@ -1717,11 +1717,11 @@ void Estimator::updateLatestStates()
         tmp_gyrBuf.pop();
     }
 
-    cout << "latest_time=," << latest_time << ",latest_P=," << EigenVector3dToStr(latest_P)
+    cout << "latest_time=," << latest_time << ",latest_P=," << Utility::EigenVector3dToStr(latest_P)
             << ",latest_Q=," << latest_Q.coeffs()(0) << "," << latest_Q.coeffs()(1) << "," << latest_Q.coeffs()(2) << "," << latest_Q.coeffs()(3)
-            << ",latest_V=," << EigenVector3dToStr(latest_V)
-            << ",latest_Ba=," << EigenVector3dToStr(latest_Ba)
-            << ",latest_Bg=," << EigenVector3dToStr(latest_Bg)
+            << ",latest_V=," << Utility::EigenVector3dToStr(latest_V)
+            << ",latest_Ba=," << Utility::EigenVector3dToStr(latest_Ba)
+            << ",latest_Bg=," << Utility::EigenVector3dToStr(latest_Bg)
             << endl;
 
     mPropagate.unlock();

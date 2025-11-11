@@ -146,4 +146,8 @@ class Utility
         return angle_degrees +
             two_pi * std::floor((-angle_degrees + T(180)) / two_pi);
     };
+
+    static std::string EigenVector3dToStr(const Eigen::Vector3d& v3d){
+        return std::to_string(v3d(0)) + "," + std::to_string(v3d(1)) + "," + std::to_string(v3d(2));
+    };
 };
