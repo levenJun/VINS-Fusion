@@ -32,6 +32,7 @@
 
 #include <opencv2/core/core.hpp>
 #include "Stereo-Inertial3/DataReader.hpp"
+#include "HelperDataSaver.hpp"
 
 // #include <System.h>
 
@@ -40,7 +41,7 @@ ros::Publisher pub_camRawImg0, pub_camRawImg1;
 int startIndex = 0;
 int endIndex = 90000;
 std::shared_ptr<DataReader> mpHeadDataReader = nullptr;
-
+std::shared_ptr<MyHelpers::HelperDataSaver> mHelperDataSaver = nullptr;
 Estimator estimator;
 
 queue<sensor_msgs::ImuConstPtr> imu_buf;
@@ -95,6 +96,9 @@ void sync_process()
     //     cerr << "ERROR: Failed to load images or IMU " << endl;
     //     return ;
     // }
+    mHelperDataSaver = std::shared_ptr<MyHelpers::HelperDataSaver>(new MyHelpers::HelperDataSaver());
+    mHelperDataSaver->setRootDirectory("./output/p1/");
+    mHelperDataSaver->startSaving();
 
     std::shared_ptr<LevenBF::Utils::UtilsKeybordManager> mKeybordManager = std::make_shared<LevenBF::Utils::UtilsKeybordManager>();
     mKeybordManager->start();
@@ -233,6 +237,16 @@ void sync_process()
             if(!imLeft.empty())
                 estimator.inputImage(tframe, imLeft);
         }
+        if(mHelperDataSaver){
+            if(estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR){
+                double timestamp = data_cam0.stamp;
+                const Eigen::Vector3d poseT = estimator.Ps[WINDOW_SIZE];
+                Eigen::Quaterniond poseQ;
+                poseQ = Eigen::Quaterniond(estimator.Rs[WINDOW_SIZE]);
+
+                mHelperDataSaver->savePoseData(timestamp, poseT, poseQ);
+            }
+        }
 
         data_cam0 = mpHeadDataReader->ReadStereoImage();        
         usleep(1000 * 30);
@@ -254,7 +268,8 @@ void sync_process()
         mKeybordManager->stop();
     }
     mKeybordManager = nullptr;
-    
+    if(mHelperDataSaver) mHelperDataSaver->stopSaving();
+    mHelperDataSaver = nullptr;
 }
 
 
