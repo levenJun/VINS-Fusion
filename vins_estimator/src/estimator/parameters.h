@@ -89,3 +89,28 @@ enum NoiseOrder
     O_AW = 6,
     O_GW = 9
 };
+
+struct MetricStatistic{
+    double timeStamp = -1;
+    double timeImageAll = 0;//estimator.inputImage总耗时
+    double timeTrackAll = 0;
+    double timeLKLeftOnce = 0;
+    double timeLKLeftTwice = 0;
+    double timeGFTTLeft = 0;
+    double timeGFTTLeftTestOnce = 0;
+    double timeLKRightTwice = 0;
+    double timeImuAll = 0;
+    double timeImgAll = 0;
+    double timeImgAddFeature = 0;
+    double timeImgOptiAll = 0;
+    double timeImgOptiWin = 0;
+    double timeImgOptiCeres = 0;
+    double timeImgSlideiWin = 0;
+
+    int fNumLkPreAll = 0;      //前后帧追踪总点
+    int fNumLkPreLeft = 0;     //前后帧追踪左目点
+    int fNumLkStereo = 0;      //双目追踪点
+    int fNumOptWinInlier = 0;  //滑窗优化后内点 
+};
+
+extern MetricStatistic mMetricStatistic;

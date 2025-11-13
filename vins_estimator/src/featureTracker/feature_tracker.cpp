@@ -94,6 +94,8 @@ double FeatureTracker::distance(cv::Point2f &pt1, cv::Point2f &pt2)
 
 map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1)
 {
+    TicToc mTicTocMetric;
+
     TicToc t_r;
     cur_time = _cur_time;
     cur_img = _img;
@@ -132,6 +134,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         }
         else
             cv::calcOpticalFlowPyrLK(prev_img, cur_img, prev_pts, cur_pts, status, err, cv::Size(21, 21), 3);
+        mMetricStatistic.timeLKLeftOnce = mTicTocMetric.tocMs();
         // reverse check
         if(FLOW_BACK)
         {
@@ -160,11 +163,14 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         reduceVector(track_cnt, status);
         ROS_DEBUG("temporal optical flow costs: %fms", t_o.toc());
         //printf("track cnt %d\n", (int)ids.size());
+        mMetricStatistic.fNumLkPreLeft = cur_pts.size();
     }
 
     for (auto &n : track_cnt)
         n++;
+    mMetricStatistic.timeLKLeftTwice = mTicTocMetric.tocMs();
 
+    mMetricStatistic.fNumLkPreAll = mMetricStatistic.fNumLkPreLeft;
     if (1)
     {
         //rejectWithF();
@@ -186,6 +192,18 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         }
         else
             n_pts.clear();
+        mMetricStatistic.timeGFTTLeft = mTicTocMetric.tocMs() - mMetricStatistic.timeLKLeftTwice;
+
+        if(false)//测试GFTT提取耗时
+        {
+            TicToc mTicTocTest;
+            vector<cv::Point2f> n_ptsTest;
+            cv::Mat maskTest = cv::Mat(row, col, CV_8UC1, cv::Scalar(255));
+            int MIN_DIST_Test = 1;
+            cv::goodFeaturesToTrack(cur_img, n_ptsTest, MAX_CNT, 0.01, MIN_DIST_Test, maskTest);
+            mMetricStatistic.timeGFTTLeftTestOnce = mTicTocTest.tocMs();
+        }
+
         ROS_DEBUG("detect feature costs: %f ms", t_t.toc());
 
         for (auto &p : n_pts)
@@ -200,6 +218,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
     cur_un_pts = undistortedPts(cur_pts, m_camera[0]);
     pts_velocity = ptsVelocity(ids, cur_un_pts, cur_un_pts_map, prev_un_pts_map);
 
+    TicToc mTicTocRight;
     if(!_img1.empty() && stereo_cam)
     {
         ids_right.clear();
@@ -231,6 +250,8 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
             ids_right = ids;
             reduceVector(cur_right_pts, status);
             reduceVector(ids_right, status);
+
+            mMetricStatistic.fNumLkStereo = cur_right_pts.size();
             // only keep left-right pts
             /*
             reduceVector(cur_pts, status);
@@ -244,6 +265,8 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         }
         prev_un_right_pts_map = cur_un_right_pts_map;
     }
+    mMetricStatistic.timeLKRightTwice = mTicTocRight.tocMs();
+    mMetricStatistic.timeTrackAll = mTicTocMetric.tocMs();
     if(SHOW_TRACK)
         drawTrack(cur_img, rightImg, ids, cur_pts, cur_right_pts, prevLeftPtsMap);
 
@@ -525,7 +548,7 @@ void FeatureTracker::setPrediction(map<int, Eigen::Vector3d> &predictPts)
 }
 
 
-void FeatureTracker::removeOutliers(set<int> &removePtsIds)
+int FeatureTracker::removeOutliers(set<int> &removePtsIds)
 {
     std::set<int>::iterator itSet;
     vector<uchar> status;
@@ -541,6 +564,7 @@ void FeatureTracker::removeOutliers(set<int> &removePtsIds)
     reduceVector(prev_pts, status);
     reduceVector(ids, status);
     reduceVector(track_cnt, status);
+    return prev_pts.size();
 }
 
 

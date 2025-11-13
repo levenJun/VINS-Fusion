@@ -163,6 +163,7 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
     std::cout << "----------imageCnt:" << inputImageCnt << "----------------" << std::endl;
     std::cout << "----------img_time:" << t << std::endl;
     map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> featureFrame;
+    TicToc mTicTocMetric;
     TicToc featureTrackerTime;
 
     if(_img1.empty())
@@ -170,13 +171,14 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
     else
         featureFrame = featureTracker.trackImage(t, _img, _img1);
     //printf("featureTracker time: %f\n", featureTrackerTime.toc());
+    mMetricStatistic.timeTrackAll = mTicTocMetric.tocMs();
 
     if (SHOW_TRACK)
     {
         cv::Mat imgTrack = featureTracker.getTrackImage();
         pubTrackImage(imgTrack, t);
     }
-    
+    // return;//看看纯track的性能消耗
     //把上面追踪到本帧的特征信息打上时间戳,缓存到队列featureBuf.
     //然后再从哦featureBuf依次取frame特征进行后续操作.
     if(MULTIPLE_THREAD)  
@@ -304,6 +306,7 @@ void Estimator::processMeasurements()
             featureBuf.pop();
             mBuf.unlock();
 
+            TicToc mTicTocMetric;
             if(USE_IMU)
             {
                 if(!initFirstPoseFlag)
@@ -320,10 +323,12 @@ void Estimator::processMeasurements()
                     processIMU(accVector[i].first, dt, accVector[i].second, gyrVector[i].second);
                 }
             }
+            mMetricStatistic.timeImuAll = mTicTocMetric.tocMs();
             mProcess.lock();
+            mTicTocMetric.tic();
             processImage(feature.second, feature.first);
             prevTime = curTime;
-
+            mMetricStatistic.timeImgAll = mTicTocMetric.tocMs();
             printStatistics(*this, 0);
 
             std_msgs::Header header;
@@ -418,6 +423,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
 {
     ROS_DEBUG("new image coming ------------------------------------------");
     ROS_DEBUG("Adding feature points %lu", image.size());
+    TicToc mTicTocMetric;
     if (f_manager.addFeatureCheckParallax(frame_count, image, td))
     {
         marginalization_flag = MARGIN_OLD;
@@ -428,7 +434,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
         marginalization_flag = MARGIN_SECOND_NEW;
         //printf("non-keyframe\n");
     }
-
+    mMetricStatistic.timeImgAddFeature = mTicTocMetric.tocMs();
     ROS_DEBUG("%s", marginalization_flag ? "Non-keyframe" : "Keyframe");
     ROS_DEBUG("Solving %d", frame_count);
     ROS_DEBUG("number of feature: %d", f_manager.getFeatureCount());
@@ -457,6 +463,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
         }
     }
 
+    mTicTocMetric.tic();
     if (solver_flag == INITIAL)
     {
         // monocular + IMU initilization
@@ -551,13 +558,16 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
             f_manager.initFramePoseByPnP(frame_count, Ps, Rs, tic, ric);
         f_manager.triangulate(frame_count, Ps, Rs, tic, ric);
         optimization();
+        mMetricStatistic.timeImgOptiWin = mTicTocMetric.tocMs();
+        //计算所有地图点MP的平均重投影误差,大于3个px就剔除
         set<int> removeIndex;
         outliersRejection(removeIndex);
         f_manager.removeOutlier(removeIndex);
         if (! MULTIPLE_THREAD)
         {
-            featureTracker.removeOutliers(removeIndex);
+            int trackInlier = featureTracker.removeOutliers(removeIndex);
             predictPtsInNextFrame();
+            mMetricStatistic.fNumOptWinInlier = trackInlier;
         }
             
         ROS_DEBUG("solver costs: %fms", t_solve.toc());
@@ -584,7 +594,9 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
         last_R0 = Rs[0];
         last_P0 = Ps[0];
         updateLatestStates();
+        mMetricStatistic.timeImgSlideiWin = mTicTocMetric.tocMs() - mMetricStatistic.timeImgOptiWin;
     }  
+    mMetricStatistic.timeImgOptiAll = mTicTocMetric.tocMs();
 }
 
 bool Estimator::initialStructure()
@@ -1109,6 +1121,8 @@ bool Estimator::failureDetection()
 void Estimator::optimization()
 {
     TicToc t_whole, t_prepare;
+    TicToc mTicTocCeres;
+    //把所有帧和地图点的实时状态转移到优化buf中。注意地图点的buf转移
     vector2double();
 
     ceres::Problem problem;
@@ -1230,8 +1244,11 @@ void Estimator::optimization()
         options.max_solver_time_in_seconds = SOLVER_TIME;
     TicToc t_solver;
     ceres::Solver::Summary summary;
+    mTicTocCeres.tic();
     ceres::Solve(options, &problem, &summary);
-    //cout << summary.BriefReport() << endl;
+    mMetricStatistic.timeImgOptiCeres = mTicTocCeres.tocMs();
+    // cout << "ceres summary: " <<  summary.BriefReport() << endl;
+    cout << "ceres summary: " <<  summary.FullReport() << endl;
     ROS_DEBUG("Iterations : %d", static_cast<int>(summary.iterations.size()));
     //printf("solver costs: %f \n", t_solver.toc());
 

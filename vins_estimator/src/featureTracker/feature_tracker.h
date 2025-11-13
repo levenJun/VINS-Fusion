@@ -56,7 +56,7 @@ public:
                                    map<int, cv::Point2f> &prevLeftPtsMap);
     void setPrediction(map<int, Eigen::Vector3d> &predictPts);
     double distance(cv::Point2f &pt1, cv::Point2f &pt2);
-    void removeOutliers(set<int> &removePtsIds);
+    int removeOutliers(set<int> &removePtsIds);//返回内点数
     cv::Mat getTrackImage();
     bool inBorder(const cv::Point2f &pt);
 

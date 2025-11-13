@@ -139,6 +139,7 @@ void sync_process()
             continue;                
         }
         std::cout << "dIdx=" << dIdx << ",endIndex=," << endIndex << std::endl;
+        mMetricStatistic.timeStamp = data_cam0.stamp;
         if(dIdx % 2 != 0){
             // continue;
         }
@@ -314,6 +315,15 @@ void sync_process()
                             << ",v3te0=," << Utility::EigenVector3dToStr(v3te0[cid]) << "," << v3te0[cid].norm();
             }
             std::cout << std::endl;
+            mMetricStatistic.timeImageAll = timeElapsedms*1.e-3;
+            std::cout << "TrackStereo MetricStatistic, timeStamp=," << mMetricStatistic.timeStamp 
+                        << ",timeImageAll=," << mMetricStatistic.timeImageAll
+                        << ",fNumLkPreAll=," << mMetricStatistic.fNumLkPreAll << ",fNumLkPreLeft=," << mMetricStatistic.fNumLkPreLeft << ",fNumLkStereo=," << mMetricStatistic.fNumLkStereo << ",fNumOptWinInlier=," << mMetricStatistic.fNumOptWinInlier            
+                        << ",timeTrackAll=," << mMetricStatistic.timeTrackAll << ",timeLKLeftOnce=," << mMetricStatistic.timeLKLeftOnce << ",timeLKLeftTwice=," << mMetricStatistic.timeLKLeftTwice << ",timeGFTTLeft=," << mMetricStatistic.timeGFTTLeft << ",timeGFTTLeftTestOnce=," << mMetricStatistic.timeGFTTLeftTestOnce << ",timeLKRightTwice=," << mMetricStatistic.timeLKRightTwice
+                        << ",timeImuAll=," << mMetricStatistic.timeImuAll
+                        << ",timeImgAll=," << mMetricStatistic.timeImgAll << ",timeImgAddFeature=," << mMetricStatistic.timeImgAddFeature << ",timeImgOptiAll=," << mMetricStatistic.timeImgOptiAll << ",timeImgOptiWin=," << mMetricStatistic.timeImgOptiWin << ",timeImgOptiCeres=," << mMetricStatistic.timeImgOptiCeres << ",timeImgSlideiWin=," << mMetricStatistic.timeImgSlideiWin 
+                        << std::endl;
+            std::cout << "OpenCV threads:" << cv::getNumThreads() << std::endl;  // 输出：2
         }
         if(mHelperDataSaver){
             if(estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR){

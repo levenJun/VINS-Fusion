@@ -33,6 +33,12 @@ class TicToc
         return elapsed_seconds.count() * 1000;
     }
 
+    double tocMs()
+    {
+        end = std::chrono::system_clock::now();
+        return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() * 1e-3;
+    }
+
   private:
     std::chrono::time_point<std::chrono::system_clock> start, end;
 };
