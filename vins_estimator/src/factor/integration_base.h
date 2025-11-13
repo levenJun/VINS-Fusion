@@ -96,6 +96,8 @@ class IntegrationBase
                 a_1_x(2), 0, -a_1_x(0),
                 -a_1_x(1), a_1_x(0), 0;
 
+            //状态x顺序是 p,q,v,ba,bg
+            //噪声顺序是 na_k,ng_k,na_k+1,ng_k+1,nba,nbg
             MatrixXd F = MatrixXd::Zero(15, 15);
             F.block<3, 3>(0, 0) = Matrix3d::Identity();
             F.block<3, 3>(0, 3) = -0.25 * delta_q.toRotationMatrix() * R_a_0_x * _dt * _dt + 
@@ -127,6 +129,8 @@ class IntegrationBase
             V.block<3, 3>(6, 9) =  V.block<3, 3>(6, 3);
             V.block<3, 3>(9, 12) = MatrixXd::Identity(3,3) * _dt;
             V.block<3, 3>(12, 15) = MatrixXd::Identity(3,3) * _dt;
+            // V.block<3, 3>(9, 12) = MatrixXd::Identity(3,3);
+            // V.block<3, 3>(12, 15) = MatrixXd::Identity(3,3);
 
             //step_jacobian = F;
             //step_V = V;
