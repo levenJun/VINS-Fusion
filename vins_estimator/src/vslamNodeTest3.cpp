@@ -497,6 +497,7 @@ int main(int argc, char **argv)
     }
     cout << "startIndex = " << startIndex << ",endIndex = " << endIndex << endl;
     
+    // cv::setNumThreads(1);
 
     // mpHeadDataReader = std::make_shared<DATA_READER::HeadDataReader>(dataDir + "/head", 4, 1, startIndex, endIndex);
     mpHeadDataReader = std::make_shared<DataReader>(dataDir + "/");

@@ -1231,8 +1231,10 @@ void Estimator::optimization()
 
     ceres::Solver::Options options;
 
-    options.linear_solver_type = ceres::DENSE_SCHUR;
-    //options.num_threads = 2;
+    options.linear_solver_type = ceres::DENSE_SCHUR;//SPARSE_SCHUR或DENSE_SCHUR就是启用了舒尔补加速了
+    // options.linear_solver_type = ceres::SPARSE_SCHUR;//SPARSE_SCHUR或DENSE_SCHUR就是启用了舒尔补加速了
+    // options.num_threads = 2;
+    // options.num_threads = 8;
     options.trust_region_strategy_type = ceres::DOGLEG;
     options.max_num_iterations = NUM_ITERATIONS;
     //options.use_explicit_schur_complement = true;
