@@ -95,6 +95,7 @@ std::string EigenVector3dToStr(const Eigen::Vector3d& v3d){
 // extract images with same timestamp from two topics
 void sync_process()
 {
+    std::cout << "try start sync_process." << std::endl;
     std::vector<std::vector<float>> cameraInfo = mpHeadDataReader->ReadCameraInfo();
     // if(!mpHeadDataReader || mpHeadDataReader->getImgSize(0) <= 0){
     //     cerr << "ERROR: Failed to load images or IMU " << endl;
@@ -122,6 +123,7 @@ void sync_process()
             continue;
         }
         if(dIdx > endIndex){
+            std::cout << "read offline done,endIndex=," << endIndex << ",dIdx=," << dIdx << std::endl;
             break;
         }
 
@@ -136,7 +138,7 @@ void sync_process()
             usleep(1);
             continue;                
         }
-        std::cout << "dIdx=" << dIdx << std::endl;
+        std::cout << "dIdx=" << dIdx << ",endIndex=," << endIndex << std::endl;
         if(dIdx % 2 != 0){
             // continue;
         }
@@ -340,12 +342,21 @@ void sync_process()
         }
         
     }
+    std::cout << "try stop sync_process. 1" << std::endl;    
+    if(mHelperDataSaver) mHelperDataSaver->stopSaving();
+    mHelperDataSaver = nullptr;    
+    
     if(mKeybordManager){
         mKeybordManager->stop();
     }
     mKeybordManager = nullptr;
-    if(mHelperDataSaver) mHelperDataSaver->stopSaving();
-    mHelperDataSaver = nullptr;
+
+    for (int sid = 3; sid >= 1; sid--)
+    {
+        std::cout << "test finish.." << sid << std::endl;
+        std::chrono::milliseconds dura(1000);
+        std::this_thread::sleep_for(dura);
+    }
 }
 
 
@@ -471,7 +482,11 @@ int main(int argc, char **argv)
     if(argc >= 4){
         startIndex = std::atoi(argv[3]);
     }
-    cout << "startIndex = " << startIndex << endl;
+    if(argc >= 5){
+        endIndex = std::atoi(argv[4]);
+    }
+    cout << "startIndex = " << startIndex << ",endIndex = " << endIndex << endl;
+    
 
     // mpHeadDataReader = std::make_shared<DATA_READER::HeadDataReader>(dataDir + "/head", 4, 1, startIndex, endIndex);
     mpHeadDataReader = std::make_shared<DataReader>(dataDir + "/");
