@@ -25,9 +25,15 @@ include_directories(
 
 catkin_package()
 
+# 查找 OpenMP 库
+find_package(OpenMP REQUIRED)
+if(OpenMP_FOUND)
+    # 添加 OpenMP 编译标志（如 -fopenmp）
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+endif()
 
 add_executable(global_fusion_node 
 	src/globalOptNode.cpp
 	src/globalOpt.cpp)
 
-target_link_libraries(global_fusion_node ${catkin_LIBRARIES} ${CERES_LIBRARIES} libGeographiccc) 
+target_link_libraries(global_fusion_node ${catkin_LIBRARIES} ${CERES_LIBRARIES} libGeographiccc OpenMP::OpenMP_CXX) 

@@ -61,6 +61,16 @@ Clone the repository and catkin_make:
 
 https://blog.csdn.net/weixin_56024057/article/details/128344034
 
+编译的ceres默认不支持多线程加速,需要在编译时开启ceres多线程加速: cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCERES_USE_OPENMP=ON -DCMAKE_INSTALL_PREFIX=xxx
+然后在使用ceres的所有模块的CMakeList.txt中开启openmp,以global_fusion_node为例如下:
+        # 查找 OpenMP 库
+        find_package(OpenMP REQUIRED)
+        if(OpenMP_FOUND)
+            # 添加 OpenMP 编译标志（如 -fopenmp）
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+        endif()
+        target_link_libraries(global_fusion_node ${CERES_LIBRARIES} OpenMP::OpenMP_CXX) 
+
 ### 2.2 编译其它报错
 
 https://blog.csdn.net/m0_52457734/article/details/125343557

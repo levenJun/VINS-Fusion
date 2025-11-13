@@ -55,7 +55,13 @@ add_library(vins_lib
     src/initial/initial_sfm.cpp
     src/initial/initial_ex_rotation.cpp
     src/featureTracker/feature_tracker.cpp)
-target_link_libraries(vins_lib ${catkin_LIBRARIES} ${OpenCV_LIBS} ${CERES_LIBRARIES})
+# 查找 OpenMP 库
+find_package(OpenMP REQUIRED)
+if(OpenMP_FOUND)
+    # 添加 OpenMP 编译标志（如 -fopenmp）
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+endif()
+target_link_libraries(vins_lib ${catkin_LIBRARIES} ${OpenCV_LIBS} ${CERES_LIBRARIES} OpenMP::OpenMP_CXX)
 message(WARNING "OpenCV_LIBS: ${OpenCV_LIBS}")
 
 add_executable(vins_node src/rosNodeTest.cpp)
