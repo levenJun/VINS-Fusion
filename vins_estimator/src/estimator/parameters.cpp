@@ -9,7 +9,7 @@
 
 #include "parameters.h"
 
-double INIT_DEPTH;
+double INIT_DEPTH;//默认取5.0
 double MIN_PARALLAX;
 double ACC_N, ACC_W;
 double GYR_N, GYR_W;

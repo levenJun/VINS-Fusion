@@ -48,7 +48,8 @@ int FeatureManager::getFeatureCount()
     return cnt;
 }
 
-
+//本帧最新特征刷新地图点列表feature（老点累加观测，新点创建新MP）
+//用追踪强弱和平移视差来判断是否要KF:MARGIN_OLD
 bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td)
 {
     ROS_DEBUG("input feature: %d", (int)image.size());
@@ -260,7 +261,9 @@ bool FeatureManager::solvePoseByPnP(Eigen::Matrix3d &R, Eigen::Vector3d &P,
 
     return true;
 }
-
+// 用PnP方法直接估最新帧pose，且pose是描述imu的
+// 基于opencv的接口:cv::solvePnP
+// fix：地图MP点，可能存在track_keep=false的点，需要识别并不采纳
 void FeatureManager::initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vector3d tic[], Matrix3d ric[])
 {
 
@@ -275,7 +278,7 @@ void FeatureManager::initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs
                 int index = frameCnt - it_per_id.start_frame;
                 if((int)it_per_id.feature_per_frame.size() >= index + 1)
                 {
-                    Vector3d ptsInCam = ric[0] * (it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth) + tic[0];
+                    Vector3d ptsInCam = ric[0] * (it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth) + tic[0];//fix:默认就是左目点*左目深度
                     Vector3d ptsInWorld = Rs[it_per_id.start_frame] * ptsInCam + Ps[it_per_id.start_frame];
 
                     cv::Point3f point3d(ptsInWorld.x(), ptsInWorld.y(), ptsInWorld.z());
@@ -311,7 +314,7 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
         if (it_per_id.estimated_depth > 0)
             continue;
 
-        if(STEREO && it_per_id.feature_per_frame[0].is_stereo)
+        if(STEREO && it_per_id.feature_per_frame[0].is_stereo)//双目三角化,算是靠谱。fix:这里要求只能是初始参考帧双目,中间的双目被忽视了
         {
             int imu_i = it_per_id.start_frame;
             Eigen::Matrix<double, 3, 4> leftPose;
@@ -350,7 +353,7 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
             */
             continue;
         }
-        else if(it_per_id.feature_per_frame.size() > 1)
+        else if(it_per_id.feature_per_frame.size() > 1)//前后多帧三角化. fix,1这里只用了左目特征;2这里没有检查基线长度;3这里只用了前后2帧
         {
             int imu_i = it_per_id.start_frame;
             Eigen::Matrix<double, 3, 4> leftPose;
@@ -452,6 +455,8 @@ void FeatureManager::removeOutlier(set<int> &outlierIndex)
     }
 }
 
+//切换参考帧和深度值
+//fix:注意起始0帧情况下,需要删除起始帧观测，并且需要转移参考帧和深度! 左右目都考虑
 void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3d marg_P, Eigen::Matrix3d new_R, Eigen::Vector3d new_P)
 {
     for (auto it = feature.begin(), it_next = feature.begin();
@@ -459,9 +464,10 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
     {
         it_next++;
 
+        //起始非0帧,只是修改参考帧id. fix,注意右目参考帧情况
         if (it->start_frame != 0)
             it->start_frame--;
-        else
+        else//起始0帧，删除起始帧观测,并把深度转移到后一帧.  fix,注意右目参考帧，深度转移需要在右目上进行:1)后一帧右目有观测就转移到右目.2)后一帧右目没有观测,左目必有观测,就把参考帧切成左目!
         {
             Eigen::Vector3d uv_i = it->feature_per_frame[0].point;  
             it->feature_per_frame.erase(it->feature_per_frame.begin());
@@ -492,6 +498,8 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
     }
 }
 
+//针对初始化阶段,切换地图点MP的参考帧和深度
+//fix：为什么没有切换深度值?
 void FeatureManager::removeBack()
 {
     for (auto it = feature.begin(), it_next = feature.begin();
@@ -509,22 +517,23 @@ void FeatureManager::removeBack()
         }
     }
 }
-
+//算是ok无需fix了?
 void FeatureManager::removeFront(int frame_count)
 {
     for (auto it = feature.begin(), it_next = feature.begin(); it != feature.end(); it = it_next)
     {
         it_next++;
 
-        if (it->start_frame == frame_count)
+        if (it->start_frame == frame_count)//因为是保留最新帧，所以最新帧的观测保留，而最新帧序号会--, 只需要参考帧序号--即可，深度值不变.
         {
             it->start_frame--;
         }
-        else
+        else//起始帧早于或者等于次新帧.
         {
             int j = WINDOW_SIZE - 1 - it->start_frame;
-            if (it->endFrame() < frame_count - 1)
+            if (it->endFrame() < frame_count - 1)//起始帧早于次新帧，并且结束帧也早于次新帧,那么不用管
                 continue;
+            //起始帧早于次新帧，并且结束帧包含次新帧,那么直接把次新帧观测删除
             it->feature_per_frame.erase(it->feature_per_frame.begin() + j);
             if (it->feature_per_frame.size() == 0)
                 feature.erase(it);

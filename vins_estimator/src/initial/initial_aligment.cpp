@@ -11,6 +11,7 @@
 
 #include "initial_alignment.h"
 
+//估的bg值效果不好
 void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
 {
     Matrix3d A;

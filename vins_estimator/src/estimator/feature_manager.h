@@ -63,10 +63,13 @@ class FeaturePerId
   public:
     const int feature_id;
     int start_frame;
-    vector<FeaturePerFrame> feature_per_frame;
+    vector<FeaturePerFrame> feature_per_frame;//fix,1,默认最新帧一定观测到了地图MP点.
+                                              //fix,2,默认从起始帧往后都是连续观测到地图MP点.
     int used_num;
-    double estimated_depth;
+    double estimated_depth;//这里默认左目2d点对应的深度
+                           //fix, 多目情况下要增加其它目深度.
     int solve_flag; // 0 haven't solve yet; 1 solve succ; 2 solve fail;
+                    // 滑窗优化后求解出的深度是负数,地图点MP的solve_flag会被置为2
 
     FeaturePerId(int _feature_id, int _start_frame)
         : feature_id(_feature_id), start_frame(_start_frame),

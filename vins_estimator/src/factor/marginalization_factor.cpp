@@ -187,6 +187,10 @@ void* ThreadsConstructA(void* threadsstruct)
     return threadsstruct;
 }
 
+// 封装边缘化约束
+// 整理老观测对于保留状态和丢弃状态的Hx=b方程
+// 舒尔补
+// 约束封装
 void MarginalizationInfo::marginalize()
 {
     //此步骤前 parameter_block_idx 已经统计好所有margin状态
@@ -353,6 +357,9 @@ MarginalizationFactor::MarginalizationFactor(MarginalizationInfo* _marginalizati
     set_num_residuals(marginalization_info->n);
 };
 
+// 先计算出最新迭代的状态x和先验状态x0的差量dx=x - x0;
+// 再修正先验e = e + Joc*dx
+// 再保持雅可比不变Joc = Joc
 bool MarginalizationFactor::Evaluate(double const *const *parameters, double *residuals, double **jacobians) const
 {
     //printf("internal addr,%d, %d\n", (int)parameter_block_sizes().size(), num_residuals());
@@ -363,6 +370,7 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
     //printf("jacobian %x\n", reinterpret_cast<long>(jacobians));
     //printf("residual %x\n", reinterpret_cast<long>(residuals));
     //}
+    // 先计算出最新迭代的状态x和先验状态x0的差量dx=x - x0;
     int n = marginalization_info->n;
     int m = marginalization_info->m;
     Eigen::VectorXd dx(n);
@@ -370,8 +378,8 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
     {
         int size = marginalization_info->keep_block_size[i];
         int idx = marginalization_info->keep_block_idx[i] - m;
-        Eigen::VectorXd x = Eigen::Map<const Eigen::VectorXd>(parameters[i], size);
-        Eigen::VectorXd x0 = Eigen::Map<const Eigen::VectorXd>(marginalization_info->keep_block_data[i], size);
+        Eigen::VectorXd x = Eigen::Map<const Eigen::VectorXd>(parameters[i], size);//最新迭代的状态x
+        Eigen::VectorXd x0 = Eigen::Map<const Eigen::VectorXd>(marginalization_info->keep_block_data[i], size);//先验状态x0
         if (size != 7)
             dx.segment(idx, size) = x - x0;
         else
@@ -384,10 +392,11 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
             }
         }
     }
+    // 再修正先验e = e + Joc*dx
     Eigen::Map<Eigen::VectorXd>(residuals, n) = marginalization_info->linearized_residuals + marginalization_info->linearized_jacobians * dx;
     if (jacobians)
     {
-
+        // 再保持雅可比不变Joc = Joc
         for (int i = 0; i < static_cast<int>(marginalization_info->keep_block_size.size()); i++)
         {
             if (jacobians[i])

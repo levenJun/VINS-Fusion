@@ -485,11 +485,11 @@ void FeatureTracker::drawTrack(const cv::Mat &imLeft, const cv::Mat &imRight,
     for (size_t j = 0; j < curLeftPts.size(); j++)
     {
         double len = std::min(1.0, 1.0 * track_cnt[j] / 20);
-        cv::circle(imTrack, curLeftPts[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
+        cv::circle(imTrack, curLeftPts[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len), 2);//curLeftPts:左目追踪超过20帧的涂红，不到20帧的越多越接近红，越少越接近蓝
     }
     if (!imRight.empty() && stereo_cam)
     {
-        for (size_t i = 0; i < curRightPts.size(); i++)
+        for (size_t i = 0; i < curRightPts.size(); i++)//curRightPts:右目特征，直接涂绿色
         {
             cv::Point2f rightPt = curRightPts[i];
             rightPt.x += cols;
@@ -506,7 +506,7 @@ void FeatureTracker::drawTrack(const cv::Mat &imLeft, const cv::Mat &imRight,
         mapIt = prevLeftPtsMap.find(id);
         if(mapIt != prevLeftPtsMap.end())
         {
-            cv::arrowedLine(imTrack, curLeftPts[i], mapIt->second, cv::Scalar(0, 255, 0), 1, 8, 0, 0.2);
+            cv::arrowedLine(imTrack, curLeftPts[i], mapIt->second, cv::Scalar(0, 255, 0), 1, 8, 0, 0.2);//curLeftPts:左目还绘制前后帧同一个特征的连线，作为绿色线
         }
     }
 

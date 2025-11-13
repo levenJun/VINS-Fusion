@@ -19,13 +19,15 @@ InitialEXRotation::InitialEXRotation(){
     ric = Matrix3d::Identity();
 }
 
+//逐渐累积多帧的视觉和imu观察，逐渐求qic。到满窗才返回true
 bool InitialEXRotation::CalibrationExRotation(vector<pair<Vector3d, Vector3d>> corres, Quaterniond delta_q_imu, Matrix3d &calib_ric_result)
 {
     frame_count++;
-    Rc.push_back(solveRelativeR(corres));
-    Rimu.push_back(delta_q_imu.toRotationMatrix());
-    Rc_g.push_back(ric.inverse() * delta_q_imu * ric);
+    Rc.push_back(solveRelativeR(corres));//对极几何求相对R
+    Rimu.push_back(delta_q_imu.toRotationMatrix());//预积分相对R
+    Rc_g.push_back(ric.inverse() * delta_q_imu * ric);//这个不是用来构建线性方程的，而是用来计算权重的
 
+    //下面构造的是求解Qci的手眼标定方程.
     Eigen::MatrixXd A(frame_count * 4, 4);
     A.setZero();
     int sum_ok = 0;
@@ -62,6 +64,9 @@ bool InitialEXRotation::CalibrationExRotation(vector<pair<Vector3d, Vector3d>> c
 
     JacobiSVD<MatrixXd> svd(A, ComputeFullU | ComputeFullV);
     Matrix<double, 4, 1> x = svd.matrixV().col(3);
+    // Eigen::Quaternionf q(w, x, y, z);  // 构造四元数（参数顺序：w, x, y, z） 
+    // Eigen::Vector4f vec = q.coeffs();  // 返回向量 [x, y, z, w]
+    // Eigen::Quaternionf q2(vec);
     Quaterniond estimated_R(x);
     ric = estimated_R.toRotationMatrix().inverse();
     //cout << svd.singularValues().transpose() << endl;

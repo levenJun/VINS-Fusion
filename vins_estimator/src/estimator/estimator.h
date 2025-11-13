@@ -110,7 +110,7 @@ class Estimator
 
     FeatureTracker featureTracker;
 
-    SolverFlag solver_flag;
+    SolverFlag solver_flag; //标记是处于初始化阶段还是正常优化阶段.INITIAL-是初始化阶段;NON_LINEAR-是正常优化阶段
     MarginalizationFlag  marginalization_flag;
     Vector3d g;
 
@@ -135,7 +135,7 @@ class Estimator
     vector<Vector3d> linear_acceleration_buf[(WINDOW_SIZE + 1)];
     vector<Vector3d> angular_velocity_buf[(WINDOW_SIZE + 1)];
 
-    int frame_count;
+    int frame_count;//只在初始化过程中持续++，直到WinSize. 在滑窗优化阶段保持为WinSize
     int sum_of_outlier, sum_of_back, sum_of_front, sum_of_invalid;
     int inputImageCnt;
 
