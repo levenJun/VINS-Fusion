@@ -50,7 +50,7 @@ int FeatureManager::getFeatureCount()
 
 //本帧最新特征刷新地图点列表feature（老点累加观测，新点创建新MP）
 //用追踪强弱和平移视差来判断是否要KF:MARGIN_OLD
-bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td)
+bool FeatureManager::addFeatureCheckParallax(int cur_frame_id, int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td)
 {
     ROS_DEBUG("input feature: %d", (int)image.size());
     ROS_DEBUG("num of feature: %d", getFeatureCount());
@@ -65,14 +65,23 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
 
     //以特征MP为核心构建所有帧的观测.
     //feature是滑窗地图所有MP点.  feature[i]是单个特征, feature[i].feature_per_frame 是FeaturePerFrame列表，记录所有帧对本特征的观测信息.
+    int curCamId = 0;   //主相机id
     for (auto &id_pts : image)
     {
-        FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
-        assert(id_pts.second[0].first == 0);
-        if(id_pts.second.size() == 2)//数目为2即为双目，需要添加右目观测
+        // FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
+        // assert(id_pts.second[0].first == 0);
+        assert(id_pts.second[0].first == curCamId);
+        FeaturePerFrame f_per_fra(curCamId, id_pts.second[0].second, td);
+        if(id_pts.second.size() >= 2)//数目为2即为双目，需要添加右目观测
         {
-            f_per_fra.rightObservation(id_pts.second[1].second);
-            assert(id_pts.second[1].first == 1);
+            for (int cdx = 1; cdx < id_pts.second.size(); cdx++)
+            {
+                f_per_fra.otherObservation(id_pts.second[cdx].first, id_pts.second[cdx].second);
+                assert(id_pts.second[cdx].first != curCamId);
+            }
+            
+            // f_per_fra.rightObservation(id_pts.second[1].second);
+            // assert(id_pts.second[1].first == 1);
         }
 
         int feature_id = id_pts.first;
@@ -83,7 +92,7 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
 
         if (it == feature.end())
         {
-            feature.push_back(FeaturePerId(feature_id, frame_count));
+            feature.push_back(FeaturePerId(feature_id, frame_count, cur_frame_id));
             feature.back().feature_per_frame.push_back(f_per_fra);
             new_feature_num++;
         }
@@ -106,7 +115,9 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
         if (it_per_id.start_frame <= frame_count - 2 &&
             it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) - 1 >= frame_count - 1)
         {
-            parallax_sum += compensatedParallax2(it_per_id, frame_count);
+            double ans = compensatedParallax2(it_per_id, frame_count);
+            if(ans == 0) continue;
+            parallax_sum += ans;
             parallax_num++;
         }
     }
@@ -135,9 +146,14 @@ vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_coun
             int idx_l = frame_count_l - it.start_frame;
             int idx_r = frame_count_r - it.start_frame;
 
-            a = it.feature_per_frame[idx_l].point;
+            if(it.feature_per_frame[idx_l].is_observed[0] == false || 
+                it.feature_per_frame[idx_r].is_observed[0] == false)//保证左目都有对应观测!
+            {
+                continue;
+            }
+            a = it.feature_per_frame[idx_l].point[0];
 
-            b = it.feature_per_frame[idx_r].point;
+            b = it.feature_per_frame[idx_r].point[0];
             
             corres.push_back(make_pair(a, b));
         }
@@ -269,7 +285,7 @@ void FeatureManager::initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs
 
     if(frameCnt > 0)
     {
-        vector<cv::Point2f> pts2D;
+        vector<cv::Point2f> pts2D;//目前只是纯左目特征的pnp
         vector<cv::Point3f> pts3D;
         for (auto &it_per_id : feature)
         {
@@ -278,11 +294,15 @@ void FeatureManager::initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs
                 int index = frameCnt - it_per_id.start_frame;
                 if((int)it_per_id.feature_per_frame.size() >= index + 1)
                 {
-                    Vector3d ptsInCam = ric[0] * (it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth) + tic[0];//fix:默认就是左目点*左目深度
+                    // Vector3d ptsInCam = ric[0] * (it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth) + tic[0];//fix:默认就是左目点*左目深度
+                    if(it_per_id.feature_per_frame[index].is_observed[0] == false) continue;//要求左目点必须有观测
+                    int mainCam = it_per_id.feature_per_frame[0].main_cam;
+                    Vector3d ptsInCam = ric[mainCam] * (it_per_id.feature_per_frame[0].point[mainCam] * it_per_id.estimated_depth) + tic[mainCam];//fix:默认就是左目点*左目深度
                     Vector3d ptsInWorld = Rs[it_per_id.start_frame] * ptsInCam + Ps[it_per_id.start_frame];
 
+                    //如下是3d点和左目观测
                     cv::Point3f point3d(ptsInWorld.x(), ptsInWorld.y(), ptsInWorld.z());
-                    cv::Point2f point2d(it_per_id.feature_per_frame[index].point.x(), it_per_id.feature_per_frame[index].point.y());
+                    cv::Point2f point2d(it_per_id.feature_per_frame[index].point[0].x(), it_per_id.feature_per_frame[index].point[0].y());
                     pts3D.push_back(point3d);
                     pts2D.push_back(point2d); 
                 }
@@ -313,28 +333,50 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
     {
         if (it_per_id.estimated_depth > 0)
             continue;
-
-        if(STEREO && it_per_id.feature_per_frame[0].is_stereo)//双目三角化,算是靠谱。fix:这里要求只能是初始参考帧双目,中间的双目被忽视了
+        const int mainCam = it_per_id.feature_per_frame[0].main_cam;
+        // if(STEREO && it_per_id.feature_per_frame[0].is_stereo)//双目三角化,算是靠谱。fix:这里要求只能是初始参考帧双目,中间的双目被忽视了
+        if(STEREO && it_per_id.feature_per_frame[0].is_stereoX())//双目三角化,算是靠谱。fix:这里要求只能是初始参考帧双目,中间的双目被忽视了
         {
+            //找第一个有效从camera
+            int slaveCam = -1;
+            for (int cid = 0; cid < NUM_CAM; cid++)
+            {
+                if(cid == mainCam) continue;
+                if(it_per_id.feature_per_frame[0].is_observed[cid]){
+                    slaveCam = cid;
+                    break;
+                }
+            }
+            if(slaveCam == -1 || slaveCam == mainCam){
+                std::cout << "triangulate warn 1, mainCam=," << mainCam << ",slaveCam=," << slaveCam << std::endl;
+                continue;
+            }
+            
             int imu_i = it_per_id.start_frame;
             Eigen::Matrix<double, 3, 4> leftPose;
-            Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
-            Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
+            // Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
+            // Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
+            Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[mainCam];
+            Eigen::Matrix3d R0 = Rs[imu_i] * ric[mainCam];
             leftPose.leftCols<3>() = R0.transpose();
             leftPose.rightCols<1>() = -R0.transpose() * t0;
             //cout << "left pose " << leftPose << endl;
 
             Eigen::Matrix<double, 3, 4> rightPose;
-            Eigen::Vector3d t1 = Ps[imu_i] + Rs[imu_i] * tic[1];
-            Eigen::Matrix3d R1 = Rs[imu_i] * ric[1];
+            // Eigen::Vector3d t1 = Ps[imu_i] + Rs[imu_i] * tic[1];
+            // Eigen::Matrix3d R1 = Rs[imu_i] * ric[1];
+            Eigen::Vector3d t1 = Ps[imu_i] + Rs[imu_i] * tic[slaveCam];
+            Eigen::Matrix3d R1 = Rs[imu_i] * ric[slaveCam];
             rightPose.leftCols<3>() = R1.transpose();
             rightPose.rightCols<1>() = -R1.transpose() * t1;
             //cout << "right pose " << rightPose << endl;
 
             Eigen::Vector2d point0, point1;
             Eigen::Vector3d point3d;
-            point0 = it_per_id.feature_per_frame[0].point.head(2);
-            point1 = it_per_id.feature_per_frame[0].pointRight.head(2);
+            // point0 = it_per_id.feature_per_frame[0].point.head(2);
+            // point1 = it_per_id.feature_per_frame[0].pointRight.head(2);
+            point0 = it_per_id.feature_per_frame[0].point[mainCam].head(2);
+            point1 = it_per_id.feature_per_frame[0].point[slaveCam].head(2);
             //cout << "point0 " << point0.transpose() << endl;
             //cout << "point1 " << point1.transpose() << endl;
 
@@ -355,24 +397,37 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
         }
         else if(it_per_id.feature_per_frame.size() > 1)//前后多帧三角化. fix,1这里只用了左目特征;2这里没有检查基线长度;3这里只用了前后2帧
         {
+            if(it_per_id.feature_per_frame[0].is_observed[mainCam] == false){
+                std::cout << "triangulate warn 2, mainCam=," << mainCam << std::endl;
+                continue;
+            }
+            if(it_per_id.feature_per_frame[1].is_observed[mainCam] == false){
+                continue;
+            }
             int imu_i = it_per_id.start_frame;
             Eigen::Matrix<double, 3, 4> leftPose;
-            Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
-            Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
+            // Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
+            // Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
+            Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[mainCam];
+            Eigen::Matrix3d R0 = Rs[imu_i] * ric[mainCam];
             leftPose.leftCols<3>() = R0.transpose();
             leftPose.rightCols<1>() = -R0.transpose() * t0;
 
             imu_i++;
             Eigen::Matrix<double, 3, 4> rightPose;
-            Eigen::Vector3d t1 = Ps[imu_i] + Rs[imu_i] * tic[0];
-            Eigen::Matrix3d R1 = Rs[imu_i] * ric[0];
+            // Eigen::Vector3d t1 = Ps[imu_i] + Rs[imu_i] * tic[0];
+            // Eigen::Matrix3d R1 = Rs[imu_i] * ric[0];
+            Eigen::Vector3d t1 = Ps[imu_i] + Rs[imu_i] * tic[mainCam];
+            Eigen::Matrix3d R1 = Rs[imu_i] * ric[mainCam];
             rightPose.leftCols<3>() = R1.transpose();
             rightPose.rightCols<1>() = -R1.transpose() * t1;
 
             Eigen::Vector2d point0, point1;
             Eigen::Vector3d point3d;
-            point0 = it_per_id.feature_per_frame[0].point.head(2);
-            point1 = it_per_id.feature_per_frame[1].point.head(2);
+            // point0 = it_per_id.feature_per_frame[0].point.head(2);
+            // point1 = it_per_id.feature_per_frame[1].point.head(2);
+            point0 = it_per_id.feature_per_frame[0].point[mainCam].head(2);
+            point1 = it_per_id.feature_per_frame[1].point[mainCam].head(2);
             triangulatePoint(leftPose, rightPose, point0, point1, point3d);
             Eigen::Vector3d localPoint;
             localPoint = leftPose.leftCols<3>() * point3d + leftPose.rightCols<1>();
@@ -398,23 +453,43 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
         int svd_idx = 0;
 
         Eigen::Matrix<double, 3, 4> P0;
-        Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
-        Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
+        // Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
+        // Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
+        Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[mainCam];//以主相机pose为基准
+        Eigen::Matrix3d R0 = Rs[imu_i] * ric[mainCam];
         P0.leftCols<3>() = Eigen::Matrix3d::Identity();
         P0.rightCols<1>() = Eigen::Vector3d::Zero();
 
         for (auto &it_per_frame : it_per_id.feature_per_frame)
         {
             imu_j++;
+            int slaveCam = mainCam;
+            if(it_per_frame.is_observed[slaveCam] == false){
+                for (int cid = 0; cid < NUM_CAM; cid++)
+                {
+                    if(cid == mainCam) continue;
+                    if(it_per_frame.is_observed[cid]){
+                        slaveCam = cid;
+                        break;
+                    }
+                }
+            }
+            if(it_per_frame.is_observed[slaveCam] == false){
+                std::cout << "triangulate warn 3, mainCam=," << mainCam << std::endl;
+                continue;//没找到
+            }
 
-            Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[0];
-            Eigen::Matrix3d R1 = Rs[imu_j] * ric[0];
+            // Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[0];
+            // Eigen::Matrix3d R1 = Rs[imu_j] * ric[0];
+            Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[slaveCam];
+            Eigen::Matrix3d R1 = Rs[imu_j] * ric[slaveCam];
             Eigen::Vector3d t = R0.transpose() * (t1 - t0);
             Eigen::Matrix3d R = R0.transpose() * R1;
             Eigen::Matrix<double, 3, 4> P;
             P.leftCols<3>() = R.transpose();
             P.rightCols<1>() = -R.transpose() * t;
-            Eigen::Vector3d f = it_per_frame.point.normalized();
+            // Eigen::Vector3d f = it_per_frame.point.normalized();
+            Eigen::Vector3d f = it_per_frame.point[slaveCam].normalized();
             svd_A.row(svd_idx++) = f[0] * P.row(2) - f[2] * P.row(0);
             svd_A.row(svd_idx++) = f[1] * P.row(2) - f[2] * P.row(1);
 
@@ -457,7 +532,8 @@ void FeatureManager::removeOutlier(set<int> &outlierIndex)
 
 //切换参考帧和深度值
 //fix:注意起始0帧情况下,需要删除起始帧观测，并且需要转移参考帧和深度! 左右目都考虑
-void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3d marg_P, Eigen::Matrix3d new_R, Eigen::Vector3d new_P)
+// void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3d marg_P, Eigen::Matrix3d new_R, Eigen::Vector3d new_P)
+void FeatureManager::removeBackShiftDepth(const std::vector<Eigen::Matrix3d>& marg_R, const std::vector<Eigen::Vector3d>& marg_P, const std::vector<Eigen::Matrix3d>& new_R, const std::vector<Eigen::Vector3d>& new_P)
 {
     for (auto it = feature.begin(), it_next = feature.begin();
          it != feature.end(); it = it_next)
@@ -469,7 +545,9 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
             it->start_frame--;
         else//起始0帧，删除起始帧观测,并把深度转移到后一帧.  fix,注意右目参考帧，深度转移需要在右目上进行:1)后一帧右目有观测就转移到右目.2)后一帧右目没有观测,左目必有观测,就把参考帧切成左目!
         {
-            Eigen::Vector3d uv_i = it->feature_per_frame[0].point;  
+            const int main_cam = it->feature_per_frame[0].main_cam;
+            // Eigen::Vector3d uv_i = it->feature_per_frame[0].point;  
+            Eigen::Vector3d uv_i = it->feature_per_frame[0].point[main_cam];
             it->feature_per_frame.erase(it->feature_per_frame.begin());
             if (it->feature_per_frame.size() < 2)
             {
@@ -478,9 +556,13 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
             }
             else
             {
+                const int main_cam2 = it->feature_per_frame[0].main_cam;//切换新的参考目
+
                 Eigen::Vector3d pts_i = uv_i * it->estimated_depth;
-                Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;
-                Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);
+                // Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;
+                // Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);
+                Eigen::Vector3d w_pts_i = marg_R[main_cam] * pts_i + marg_P[main_cam];
+                Eigen::Vector3d pts_j = new_R[main_cam2].transpose() * (w_pts_i - new_P[main_cam2]);
                 double dep_j = pts_j(2);
                 if (dep_j > 0)
                     it->estimated_depth = dep_j;
@@ -533,10 +615,18 @@ void FeatureManager::removeFront(int frame_count)
             int j = WINDOW_SIZE - 1 - it->start_frame;
             if (it->endFrame() < frame_count - 1)//起始帧早于次新帧，并且结束帧也早于次新帧,那么不用管
                 continue;
-            //起始帧早于次新帧，并且结束帧包含次新帧,那么直接把次新帧观测删除
+            //起始帧早于次新帧，并且结束帧包含次新帧,那么直接把次新帧观测删除:注意,起始帧刚好是次新帧，深度值要切换不?
             it->feature_per_frame.erase(it->feature_per_frame.begin() + j);
             if (it->feature_per_frame.size() == 0)
+            {
                 feature.erase(it);
+            }else{
+                if(it->start_frame == frame_count - 1){//如果起始帧就是次新帧，那么把深度清空!
+                    if(false){
+                        it->estimated_depth = -1;
+                    }
+                }
+            }
         }
     }
 }
@@ -549,12 +639,15 @@ double FeatureManager::compensatedParallax2(const FeaturePerId &it_per_id, int f
     const FeaturePerFrame &frame_j = it_per_id.feature_per_frame[frame_count - 1 - it_per_id.start_frame];
 
     double ans = 0;
-    Vector3d p_j = frame_j.point;
+    if(frame_i.main_cam != frame_j.main_cam) return ans;//要求是同一个相机，才能计算
+    // Vector3d p_j = frame_j.point;
+    Vector3d p_j = frame_j.point[frame_j.main_cam];
 
     double u_j = p_j(0);
     double v_j = p_j(1);
 
-    Vector3d p_i = frame_i.point;
+    // Vector3d p_i = frame_i.point;
+    Vector3d p_i = frame_i.point[frame_i.main_cam];
     Vector3d p_i_comp;
 
     //int r_i = frame_count - 2;

@@ -261,8 +261,11 @@ void pubPointCloud(const Estimator &estimator, const std_msgs::Header &header)
         if (it_per_id.start_frame > WINDOW_SIZE * 3.0 / 4.0 || it_per_id.solve_flag != 1)
             continue;
         int imu_i = it_per_id.start_frame;
-        Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
-        Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0]) + estimator.Ps[imu_i];
+        const int main_cam = it_per_id.feature_per_frame[0].main_cam;
+        // Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
+        // Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0]) + estimator.Ps[imu_i];
+        Vector3d pts_i = it_per_id.feature_per_frame[0].point[main_cam] * it_per_id.estimated_depth;
+        Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[main_cam] * pts_i + estimator.tic[main_cam]) + estimator.Ps[imu_i];
 
         geometry_msgs::Point32 p;
         p.x = w_pts_i(0);
@@ -290,8 +293,11 @@ void pubPointCloud(const Estimator &estimator, const std_msgs::Header &header)
             && it_per_id.solve_flag == 1 )
         {
             int imu_i = it_per_id.start_frame;
-            Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
-            Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0]) + estimator.Ps[imu_i];
+            const int main_cam = it_per_id.feature_per_frame[0].main_cam;
+            // Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
+            // Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0]) + estimator.Ps[imu_i];
+            Vector3d pts_i = it_per_id.feature_per_frame[0].point[main_cam] * it_per_id.estimated_depth;
+            Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[main_cam] * pts_i + estimator.tic[main_cam]) + estimator.Ps[imu_i];
 
             geometry_msgs::Point32 p;
             p.x = w_pts_i(0);
@@ -388,9 +394,14 @@ void pubKeyframe(const Estimator &estimator)
             if(it_per_id.start_frame < WINDOW_SIZE - 2 && it_per_id.start_frame + frame_size - 1 >= WINDOW_SIZE - 2 && it_per_id.solve_flag == 1)
             {
 
+                const int main_cam = it_per_id.feature_per_frame[0].main_cam;
+                if(main_cam != 0) continue;//目前只发送左目的特征
                 int imu_i = it_per_id.start_frame;
-                Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
-                Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0])
+                // Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
+                // Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0])
+                //                       + estimator.Ps[imu_i];
+                Vector3d pts_i = it_per_id.feature_per_frame[0].point[main_cam] * it_per_id.estimated_depth;
+                Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[main_cam] * pts_i + estimator.tic[main_cam])
                                       + estimator.Ps[imu_i];
                 geometry_msgs::Point32 p;
                 p.x = w_pts_i(0);
@@ -400,10 +411,10 @@ void pubKeyframe(const Estimator &estimator)
 
                 int imu_j = WINDOW_SIZE - 2 - it_per_id.start_frame;
                 sensor_msgs::ChannelFloat32 p_2d;
-                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].point.x());
-                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].point.y());
-                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].uv.x());
-                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].uv.y());
+                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].point[0].x());
+                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].point[0].y());
+                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].uv[0].x());
+                p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].uv[0].y());
                 p_2d.values.push_back(it_per_id.feature_id);
                 point_cloud.channels.push_back(p_2d);
             }

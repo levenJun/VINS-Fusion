@@ -28,34 +28,72 @@ using namespace Eigen;
 class FeaturePerFrame
 {
   public:
-    FeaturePerFrame(const Eigen::Matrix<double, 7, 1> &_point, double td)
-    {
-        point.x() = _point(0);
-        point.y() = _point(1);
-        point.z() = _point(2);
-        uv.x() = _point(3);
-        uv.y() = _point(4);
-        velocity.x() = _point(5); 
-        velocity.y() = _point(6); 
-        cur_td = td;
-        is_stereo = false;
-    }
-    void rightObservation(const Eigen::Matrix<double, 7, 1> &_point)
-    {
-        pointRight.x() = _point(0);
-        pointRight.y() = _point(1);
-        pointRight.z() = _point(2);
-        uvRight.x() = _point(3);
-        uvRight.y() = _point(4);
-        velocityRight.x() = _point(5); 
-        velocityRight.y() = _point(6); 
-        is_stereo = true;
-    }
+    // FeaturePerFrame(const Eigen::Matrix<double, 7, 1> &_point, double td)
+    // {
+    //     point.x() = _point(0);
+    //     point.y() = _point(1);
+    //     point.z() = _point(2);
+    //     uv.x() = _point(3);
+    //     uv.y() = _point(4);
+    //     velocity.x() = _point(5); 
+    //     velocity.y() = _point(6); 
+    //     cur_td = td;
+    //     is_stereo = false;
+    // }
+    // void rightObservation(const Eigen::Matrix<double, 7, 1> &_point)
+    // {
+    //     pointRight.x() = _point(0);
+    //     pointRight.y() = _point(1);
+    //     pointRight.z() = _point(2);
+    //     uvRight.x() = _point(3);
+    //     uvRight.y() = _point(4);
+    //     velocityRight.x() = _point(5); 
+    //     velocityRight.y() = _point(6); 
+    //     is_stereo = true;
+    // }
     double cur_td;
-    Vector3d point, pointRight;
-    Vector2d uv, uvRight;
-    Vector2d velocity, velocityRight;
-    bool is_stereo;
+    // Vector3d point, pointRight;
+    // Vector2d uv, uvRight;
+    // Vector2d velocity, velocityRight;
+    // bool is_stereo;
+    int main_cam = -1;                  //标记本帧以哪个相机为准
+    Vector3d point[NUM_CAM];           //单帧多目观测，用数组组织
+    Vector2d uv[NUM_CAM];
+    Vector2d velocity[NUM_CAM];
+    bool is_observed[NUM_CAM] = {false};//标记本帧观测到哪些相机了
+    bool is_stereoX(){ int obsNum = 0; for(bool& obs: is_observed){if(obs) obsNum++; }; return obsNum >= 2; }
+
+    FeaturePerFrame(int _main_cam, const Eigen::Matrix<double, 7, 1> &_point, double td)
+    {
+        assert(0 <= _main_cam && _main_cam < NUM_CAM);
+        main_cam = _main_cam;
+        point[main_cam].x() = _point(0);
+        point[main_cam].y() = _point(1);
+        point[main_cam].z() = _point(2);
+        uv[main_cam].x() = _point(3);
+        uv[main_cam].y() = _point(4);
+        velocity[main_cam].x() = _point(5); 
+        velocity[main_cam].y() = _point(6); 
+        cur_td = td;
+        for (int cid = 0; cid < NUM_CAM; cid++)
+        {
+            is_observed[cid] = false;
+        }
+        is_observed[main_cam] = true;
+    }
+
+    void otherObservation(int other_id, const Eigen::Matrix<double, 7, 1> &_point)
+    {
+        assert(0 <= other_id && other_id < NUM_CAM);      
+        point[other_id].x() = _point(0);
+        point[other_id].y() = _point(1);
+        point[other_id].z() = _point(2);
+        uv[other_id].x() = _point(3);
+        uv[other_id].y() = _point(4);
+        velocity[other_id].x() = _point(5); 
+        velocity[other_id].y() = _point(6);
+        is_observed[other_id] = true;
+    }
 };
 
 class FeaturePerId
@@ -70,14 +108,22 @@ class FeaturePerId
                            //fix, 多目情况下要增加其它目深度.
     int solve_flag; // 0 haven't solve yet; 1 solve succ; 2 solve fail;
                     // 滑窗优化后求解出的深度是负数,地图点MP的solve_flag会被置为2
-
-    FeaturePerId(int _feature_id, int _start_frame)
+    bool track_keep;        //标记是否被最新帧追踪到
+    int flag_opti_frame_id; //标记正参与哪一帧的优化
+    int create_frame_id;    //标记是哪个帧创建的
+    FeaturePerId(int _feature_id, int _start_frame, int _create_frame_id = -1)
         : feature_id(_feature_id), start_frame(_start_frame),
-          used_num(0), estimated_depth(-1.0), solve_flag(0)
+          used_num(0), estimated_depth(-1.0), solve_flag(0), track_keep(true), flag_opti_frame_id(-1), create_frame_id(_create_frame_id)
     {
     }
 
     int endFrame();
+};
+
+class FeatureFuseInfo{
+  public:
+    const int feature_id1;
+    const int feature_id2;
 };
 
 class FeatureManager
@@ -88,7 +134,7 @@ class FeatureManager
     void setRic(Matrix3d _ric[]);
     void clearState();
     int getFeatureCount();
-    bool addFeatureCheckParallax(int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td);
+    bool addFeatureCheckParallax(int cur_frame_id, int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td);
     vector<pair<Vector3d, Vector3d>> getCorresponding(int frame_count_l, int frame_count_r);
     //void updateDepth(const VectorXd &x);
     void setDepth(const VectorXd &x);
@@ -101,11 +147,13 @@ class FeatureManager
     void initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vector3d tic[], Matrix3d ric[]);
     bool solvePoseByPnP(Eigen::Matrix3d &R_initial, Eigen::Vector3d &P_initial, 
                             vector<cv::Point2f> &pts2D, vector<cv::Point3f> &pts3D);
-    void removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3d marg_P, Eigen::Matrix3d new_R, Eigen::Vector3d new_P);
+    // void removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3d marg_P, Eigen::Matrix3d new_R, Eigen::Vector3d new_P);
+    void removeBackShiftDepth(const std::vector<Eigen::Matrix3d>& marg_R, const std::vector<Eigen::Vector3d>& marg_P, const std::vector<Eigen::Matrix3d>& new_R, const std::vector<Eigen::Vector3d>& new_P);
     void removeBack();
     void removeFront(int frame_count);
     void removeOutlier(set<int> &outlierIndex);
-    list<FeaturePerId> feature;
+    list<FeaturePerId> feature;                                       //这个list结构需要优化,不然查找时太耗时了!
+    list<std::pair<FeatureFuseInfo,FeaturePerId>> featureTryFuse;     //临时融合点
     int last_track_num;
     double last_average_parallax;
     int new_feature_num;

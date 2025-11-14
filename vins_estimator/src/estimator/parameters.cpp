@@ -46,6 +46,14 @@ double F_THRESHOLD;
 int SHOW_TRACK;
 int FLOW_BACK;
 MetricStatistic mMetricStatistic;
+std::atomic<int> g_frameId(0);
+int getGlobalFrameId(bool selfPlus){
+    if(selfPlus){
+        return g_frameId++;
+    }else{
+        return g_frameId;
+    }
+};
 
 template <typename T>
 T readParam(ros::NodeHandle &n, std::string name)
