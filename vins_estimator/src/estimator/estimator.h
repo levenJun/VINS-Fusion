@@ -136,6 +136,7 @@ class Estimator
     vector<Vector3d> angular_velocity_buf[(WINDOW_SIZE + 1)];
 
     int frame_count;//只在初始化过程中持续++，直到WinSize. 在滑窗优化阶段保持为WinSize
+    int cur_frame_id;//标记当前正在处理的最新帧id
     int sum_of_outlier, sum_of_back, sum_of_front, sum_of_invalid;
     int inputImageCnt;
 

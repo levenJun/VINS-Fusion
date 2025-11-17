@@ -48,7 +48,7 @@ touch $log1 $log2 $log3
 gnome-terminal -- bash -c "script -c 'roslaunch vins vins_rviz.launch' $log1"
 InputYesOrExit
 
-gnome-terminal -- bash -c "script -c 'rosrun loop_fusion loop_fusion_node $pathConfigFile' $log3"
-InputYesOrExit
+# gnome-terminal -- bash -c "script -c 'rosrun loop_fusion loop_fusion_node $pathConfigFile' $log3"
+# InputYesOrExit
 
-gnome-terminal -- bash -c "script -c 'rosrun vins vslam_test3 $pathConfigFile $pathDataset 100 1100' $log2"
+gnome-terminal -- bash -c "script -c 'rosrun vins vslam_test3 $pathConfigFile $pathDataset 100 1200' $log2"

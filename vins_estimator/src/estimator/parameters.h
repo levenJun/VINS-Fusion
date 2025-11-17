@@ -17,6 +17,7 @@
 #include <opencv2/core/eigen.hpp>
 #include <fstream>
 #include <map>
+#include <atomic>  // 需包含原子操作头文件
 
 using namespace std;
 
@@ -25,7 +26,7 @@ const int WINDOW_SIZE = 20;
 // const int WINDOW_SIZE = 10;
 const int NUM_OF_F = 1000;
 //#define UNIT_SPHERE_ERROR
-
+const int NUM_CAM = 2;//相机数
 extern double INIT_DEPTH;
 extern double MIN_PARALLAX;
 extern int ESTIMATE_EXTRINSIC;
@@ -115,3 +116,6 @@ struct MetricStatistic{
 };
 
 extern MetricStatistic mMetricStatistic;
+
+extern std::atomic<int> g_frameId;
+int getGlobalFrameId(bool selfPlus);
