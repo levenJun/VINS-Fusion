@@ -164,6 +164,7 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
     cur_frame_id = getGlobalFrameId(true);    
     std::cout << "----------imageCnt:" << inputImageCnt << ",cur_frame_id=," << cur_frame_id << "----------------" << std::endl;
     std::cout << "----------img_time:" << t << std::endl;
+    std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> featureFrameMulti;//多目追踪结果
     //featureFrame[id1][i].first是本帧的追踪到的特征所属相机cid:有0和1的双目id
     //featureFrame[id1][i].second是本帧的追踪到的特征 像素px等信息    
     map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> featureFrame;
@@ -171,9 +172,10 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
     TicToc featureTrackerTime;
 
     if(_img1.empty())
-        featureFrame = featureTracker.trackImage(t, _img);
+        featureFrameMulti = featureTracker.trackImage(t, _img);
     else
-        featureFrame = featureTracker.trackImage(t, _img, _img1);
+        featureFrameMulti = featureTracker.trackImage(t, _img, _img1);
+    featureFrame = featureFrameMulti[0];//暂时只取左目结果
     //printf("featureTracker time: %f\n", featureTrackerTime.toc());
     mMetricStatistic.timeTrackAll = mTicTocMetric.tocMs();
 
@@ -578,9 +580,10 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
         f_manager.removeOutlier(removeIndex);//从地图容器中剔除
         if (! MULTIPLE_THREAD)//在串行模式下,才会从光流追踪参考数据中剔除
         {
-            int trackInlier = featureTracker.removeOutliers(removeIndex);
+            std::vector<int> trackInlier = featureTracker.removeOutliers(removeIndex);//返回多目内点
             predictPtsInNextFrame();
-            mMetricStatistic.fNumOptWinInlier = trackInlier;
+            mMetricStatistic.fNumOptWinInlier = trackInlier[0];
+            if(NUM_CAM > 1) mMetricStatistic.fNumOptWinInlierRight = trackInlier[1];
         }
             
         ROS_DEBUG("solver costs: %fms", t_solve.toc());

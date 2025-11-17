@@ -38,11 +38,13 @@ class FeatureTracker
 {
 public:
     FeatureTracker();
-    map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1 = cv::Mat());
-    void setMask();
+    // map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1 = cv::Mat());
+    std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1 = cv::Mat());
+    // void setMask();
+    void setMask(int cid);
     void readIntrinsicParameter(const vector<string> &calib_file);
     void showUndistortion(const string &name);
-    void rejectWithF();
+    void rejectWithF(int cid);
     void undistortedPoints();
     vector<cv::Point2f> undistortedPts(vector<cv::Point2f> &pts, camodocal::CameraPtr cam);
     vector<cv::Point2f> ptsVelocity(vector<int> &ids, vector<cv::Point2f> &pts, 
@@ -56,30 +58,33 @@ public:
                                    map<int, cv::Point2f> &prevLeftPtsMap);
     void setPrediction(map<int, Eigen::Vector3d> &predictPts);
     double distance(cv::Point2f &pt1, cv::Point2f &pt2);
-    int removeOutliers(set<int> &removePtsIds);//返回内点数
+    std::vector<int> removeOutliers(set<int> &removePtsIds);//返回内点数
     cv::Mat getTrackImage();
     bool inBorder(const cv::Point2f &pt);
 
     int row, col;
-    cv::Mat imTrack;
-    cv::Mat mask;
-    cv::Mat fisheye_mask;
-    cv::Mat prev_img, cur_img;
-    vector<cv::Point2f> n_pts;
-    vector<cv::Point2f> predict_pts;
-    vector<cv::Point2f> predict_pts_debug;
-    vector<cv::Point2f> prev_pts, cur_pts, cur_right_pts;
-    vector<cv::Point2f> prev_un_pts, cur_un_pts, cur_un_right_pts;
-    vector<cv::Point2f> pts_velocity, right_pts_velocity;
-    vector<int> ids, ids_right;
-    vector<int> track_cnt;
-    map<int, cv::Point2f> cur_un_pts_map, prev_un_pts_map;
-    map<int, cv::Point2f> cur_un_right_pts_map, prev_un_right_pts_map;
-    map<int, cv::Point2f> prevLeftPtsMap;
+    cv::Mat imTrack;                                     //用于显示的图(debug)
+    struct TrackInfoMono{
+        cv::Mat mask;                                        //多目copy:单目追踪的mask
+        cv::Mat fisheye_mask;
+        cv::Mat prev_img, cur_img;                           //多目copy:单目追踪的前后帧图像
+        vector<cv::Point2f> n_pts;                           //多目copy:单目追踪后补的点
+        vector<cv::Point2f> predict_pts;                     //多目copy:单目追踪预测点
+        vector<cv::Point2f> predict_pts_debug;               //多目copy:单目追踪预测点
+        vector<cv::Point2f> prev_pts, cur_pts, cur_right_pts;//多目copy:单目追踪前后帧点+到其它目双目匹配点
+        vector<cv::Point2f> prev_un_pts, cur_un_pts, cur_un_right_pts;//多目copy:单目特征点去畸变后结果
+        vector<cv::Point2f> pts_velocity, right_pts_velocity;//多目copy:单目特征的速度(z1平面，真实时间速度)
+        vector<int> ids, ids_right;                          //多目copy:最新帧左目特征id,右目匹配到的特征id
+        vector<int> track_cnt;                               //多目copy:单目追踪纯 点次数
+        map<int, cv::Point2f> cur_un_pts_map, prev_un_pts_map;              //多目copy:最新帧[id,un点]记录, 上一帧[id,un点]记录
+        map<int, cv::Point2f> cur_un_right_pts_map, prev_un_right_pts_map;  //多目copy:最新帧右目[id,un点]记录, 上一帧右目[id,un点]记录
+        map<int, cv::Point2f> prevLeftPtsMap;                               //多目copy:上一帧[id,ori点]记录
+    };
+    TrackInfoMono vTrackInfoMono[NUM_CAM];
     vector<camodocal::CameraPtr> m_camera;
     double cur_time;
     double prev_time;
     bool stereo_cam;
-    int n_id;
-    bool hasPrediction;
+    std::atomic<int> n_id{0};                           //全局唯一自增加id
+    bool hasPrediction[NUM_CAM];
 };
