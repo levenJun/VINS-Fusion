@@ -139,6 +139,7 @@ void sync_process()
             continue;                
         }
         std::cout << "dIdx=" << dIdx << ",endIndex=," << endIndex << std::endl;
+        mMetricStatistic.Clear();
         mMetricStatistic.timeStamp = data_cam0.stamp;
         if(dIdx % 2 != 0){
             // continue;
@@ -337,7 +338,8 @@ void sync_process()
         }
 
         data_cam0 = mpHeadDataReader->ReadStereoImage();        
-        usleep(1000 * 30);
+        // usleep(1000 * 30);
+        usleep(1000 * 3);
         // std::chrono::milliseconds dura(2);
         // std::this_thread::sleep_for(dura);
 

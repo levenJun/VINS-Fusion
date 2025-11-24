@@ -115,6 +115,7 @@ struct MetricStatistic{
     int fNumOptWinInlier = 0;  //滑窗优化后内点 
     int fNumOptWinInlierRight = 0;  //滑窗优化后内点 
 
+    void Clear();
 };
 
 extern MetricStatistic mMetricStatistic;

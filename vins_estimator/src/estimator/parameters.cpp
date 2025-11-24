@@ -46,6 +46,29 @@ double F_THRESHOLD;
 int SHOW_TRACK;
 int FLOW_BACK;
 MetricStatistic mMetricStatistic;
+void MetricStatistic::Clear(){
+    timeStamp = -1;
+    timeImageAll = 0;//estimator.inputImage总耗时
+    timeTrackAll = 0;
+    timeLKLeftOnce = 0;
+    timeLKLeftTwice = 0;
+    timeGFTTLeft = 0;
+    timeGFTTLeftTestOnce = 0;
+    timeLKRightTwice = 0;
+    timeImuAll = 0;
+    timeImgAll = 0;
+    timeImgAddFeature = 0;
+    timeImgOptiAll = 0;
+    timeImgOptiWin = 0;
+    timeImgOptiCeres = 0;
+    timeImgSlideiWin = 0;
+
+    fNumLkPreAll = 0;      //前后帧追踪总点
+    fNumLkPreLeft = 0;     //前后帧追踪左目点
+    fNumLkStereo = 0;      //双目追踪点
+    fNumOptWinInlier = 0;  //滑窗优化后内点 
+    fNumOptWinInlierRight = 0;  //滑窗优化后内点
+};
 std::atomic<int> g_frameId(0);
 int getGlobalFrameId(bool selfPlus){
     if(selfPlus){
