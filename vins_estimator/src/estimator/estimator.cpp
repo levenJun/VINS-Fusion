@@ -164,6 +164,7 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
     cur_frame_id = getGlobalFrameId(true);    
     std::cout << "----------imageCnt:" << inputImageCnt << ",cur_frame_id=," << cur_frame_id << "----------------" << std::endl;
     std::cout << "----------img_time:" << t << std::endl;
+    std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> featureFrameMulti;//多目追踪结果
     //featureFrame[id1][i].first是本帧的追踪到的特征所属相机cid:有0和1的双目id
     //featureFrame[id1][i].second是本帧的追踪到的特征 像素px等信息    
     map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> featureFrame;
@@ -171,9 +172,10 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
     TicToc featureTrackerTime;
 
     if(_img1.empty())
-        featureFrame = featureTracker.trackImage(t, _img);
+        featureFrameMulti = featureTracker.trackImage(t, _img);
     else
-        featureFrame = featureTracker.trackImage(t, _img, _img1);
+        featureFrameMulti = featureTracker.trackImage(t, _img, _img1);
+    featureFrame = featureFrameMulti[0];//暂时只取左目结果
     //printf("featureTracker time: %f\n", featureTrackerTime.toc());
     mMetricStatistic.timeTrackAll = mTicTocMetric.tocMs();
 
@@ -578,9 +580,10 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
         f_manager.removeOutlier(removeIndex);//从地图容器中剔除
         if (! MULTIPLE_THREAD)//在串行模式下,才会从光流追踪参考数据中剔除
         {
-            int trackInlier = featureTracker.removeOutliers(removeIndex);
+            std::vector<int> trackInlier = featureTracker.removeOutliers(removeIndex);//返回多目内点
             predictPtsInNextFrame();
-            mMetricStatistic.fNumOptWinInlier = trackInlier;
+            mMetricStatistic.fNumOptWinInlier = trackInlier[0];
+            if(NUM_CAM > 1) mMetricStatistic.fNumOptWinInlierRight = trackInlier[1];
         }
             
         ROS_DEBUG("solver costs: %fms", t_solve.toc());
@@ -1757,7 +1760,8 @@ void Estimator::predictPtsInNextFrame()
     getPoseInWorldFrame(curT);
     getPoseInWorldFrame(frame_count - 1, prevT);
     nextT = curT * (prevT.inverse() * curT);//恒速模型预测
-    map<int, Eigen::Vector3d> predictPts;
+    // map<int, Eigen::Vector3d> predictPts;
+    map<int, Eigen::Vector3d> predictPts[NUM_CAM];
 
     for (auto &it_per_id : f_manager.feature)
     {
@@ -1775,13 +1779,22 @@ void Estimator::predictPtsInNextFrame()
                 Vector3d pts_j = ric[main_cam] * (depth * it_per_id.feature_per_frame[0].point[main_cam]) + tic[main_cam];
                 Vector3d pts_w = Rs[firstIndex] * pts_j + Ps[firstIndex];
                 Vector3d pts_local = nextT.block<3, 3>(0, 0).transpose() * (pts_w - nextT.block<3, 1>(0, 3));
-                Vector3d pts_cam = ric[0].transpose() * (pts_local - tic[0]);
-                int ptsIndex = it_per_id.feature_id;
-                predictPts[ptsIndex] = pts_cam;//特征点在左目的3d坐标
+                for (int cid = 0; cid < NUM_CAM; cid++)
+                {
+                    Vector3d pts_cam = ric[cid].transpose() * (pts_local - tic[cid]);
+                    int ptsIndex = it_per_id.feature_id;
+                    predictPts[cid][ptsIndex] = pts_cam;//特征点在左目的3d坐标
+                }
             }
         }
     }
-    featureTracker.setPrediction(predictPts);
+    for (int cid = 0; cid < NUM_CAM; cid++)
+    {
+        if(predictPts[cid].size() > 0){
+            std::cout <<  "predictPtsInNextFrame, cid=," << cid << ",num=," << predictPts[cid].size() << std::endl;
+            featureTracker.setPrediction(cid, predictPts[cid]);//暂时只设置左目预测点
+        }
+    }
     //printf("estimator output %d predict pts\n",(int)predictPts.size());
 }
 
