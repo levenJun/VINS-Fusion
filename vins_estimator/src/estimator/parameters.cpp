@@ -66,6 +66,8 @@ void MetricStatistic::Clear(){
     fNumLkPreAll = 0;      //前后帧追踪总点
     fNumLkPreLeft = 0;     //前后帧追踪左目点
     fNumLkStereo = 0;      //双目追踪点
+    fNumOptWinAll = 0;
+    fNumOptWinLeft = 0;
     fNumOptWinInlier = 0;  //滑窗优化后内点 
     fNumOptWinInlierRight = 0;  //滑窗优化后内点
 };

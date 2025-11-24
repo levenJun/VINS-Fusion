@@ -338,6 +338,15 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
         cv::Mat rightImg = stereo_cam? vTrackInfoMono[1].cur_img : cv::Mat();
         // drawTrack(cur_img, rightImg, ids, cur_pts, cur_right_pts, prevLeftPtsMap);
         drawTrack(vTrackInfoMono[0].cur_img, rightImg, vTrackInfoMono[0].ids, vTrackInfoMono[0].cur_pts, vTrackInfoMono[0].cur_right_pts, vTrackInfoMono[0].prevLeftPtsMap);
+
+        if(NUM_CAM > 1){
+            for (int cid = 1; cid < NUM_CAM; cid++)
+            {
+                cv::Mat imTrackMono;
+                drawTrackMono(cid, vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].ids, vTrackInfoMono[cid].cur_pts, vTrackInfoMono[cid].prevLeftPtsMap, imTrackMono);
+                cv::hconcat(imTrack, imTrackMono, imTrack);
+            }
+        }
     }
 
     //cur到pre的转移操作
@@ -609,6 +618,45 @@ void FeatureTracker::drawTrack(const cv::Mat &imLeft, const cv::Mat &imRight,
     //cv::resize(imCur2, imCur2Compress, cv::Size(cols, rows / 2));
 }
 
+void FeatureTracker::drawTrackMono(const int cid, const cv::Mat &imLeft, 
+                                    vector<int> &curLeftIds, vector<cv::Point2f> &curLeftPts, map<int, cv::Point2f> &prevLeftPtsMap,
+                                cv::Mat &imOut)
+{
+    //int rows = imLeft.rows;
+    int cols = imLeft.cols;
+    imOut = imLeft.clone();
+        
+    cv::cvtColor(imOut, imOut, CV_GRAY2RGB);
+
+    for (size_t j = 0; j < curLeftPts.size(); j++)
+    {
+        double len = std::min(1.0, 1.0 * vTrackInfoMono[cid].track_cnt[j] / 20);
+        cv::circle(imOut, curLeftPts[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len), 2);//curLeftPts:左目追踪超过20帧的涂红，不到20帧的越多越接近红，越少越接近蓝
+    }
+    
+    map<int, cv::Point2f>::iterator mapIt;
+    for (size_t i = 0; i < curLeftIds.size(); i++)
+    {
+        int id = curLeftIds[i];
+        mapIt = prevLeftPtsMap.find(id);
+        if(mapIt != prevLeftPtsMap.end())
+        {
+            cv::arrowedLine(imOut, curLeftPts[i], mapIt->second, cv::Scalar(0, 255, 0), 1, 8, 0, 0.2);//curLeftPts:左目还绘制前后帧同一个特征的连线，作为绿色线
+        }
+    }
+
+    //draw prediction
+    /*
+    for(size_t i = 0; i < predict_pts_debug.size(); i++)
+    {
+        cv::circle(imTrack, predict_pts_debug[i], 2, cv::Scalar(0, 170, 255), 2);
+    }
+    */
+    //printf("predict pts size %d \n", (int)predict_pts_debug.size());
+
+    //cv::Mat imCur2Compress;
+    //cv::resize(imCur2, imCur2Compress, cv::Size(cols, rows / 2));
+}
 
 void FeatureTracker::setPrediction(int cid, map<int, Eigen::Vector3d> &predictPts)
 {

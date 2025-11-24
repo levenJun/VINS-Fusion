@@ -112,6 +112,8 @@ struct MetricStatistic{
     int fNumLkPreAll = 0;      //前后帧追踪总点
     int fNumLkPreLeft = 0;     //前后帧追踪左目点
     int fNumLkStereo = 0;      //双目追踪点
+    int fNumOptWinAll = 0;     //滑窗优化的所有MP点
+    int fNumOptWinLeft = 0;    //滑窗优化的所有以左目为主的点
     int fNumOptWinInlier = 0;  //滑窗优化后内点 
     int fNumOptWinInlierRight = 0;  //滑窗优化后内点 
 

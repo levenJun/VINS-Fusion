@@ -319,7 +319,8 @@ void sync_process()
             mMetricStatistic.timeImageAll = timeElapsedms*1.e-3;
             std::cout << "TrackStereo MetricStatistic, timeStamp=," << mMetricStatistic.timeStamp 
                         << ",timeImageAll=," << mMetricStatistic.timeImageAll
-                        << ",fNumLkPreAll=," << mMetricStatistic.fNumLkPreAll << ",fNumLkPreLeft=," << mMetricStatistic.fNumLkPreLeft << ",fNumLkStereo=," << mMetricStatistic.fNumLkStereo << ",fNumOptWinInlier=," << mMetricStatistic.fNumOptWinInlier            
+                        << ",fNumLkPreAll=," << mMetricStatistic.fNumLkPreAll << ",fNumLkPreLeft=," << mMetricStatistic.fNumLkPreLeft << ",fNumLkStereo=," << mMetricStatistic.fNumLkStereo 
+                        << ",fNumOptWinAll=," << mMetricStatistic.fNumOptWinAll << ",fNumOptWinLeft=," << mMetricStatistic.fNumOptWinLeft << ",fNumOptWinInlier=," << mMetricStatistic.fNumOptWinInlier << ",fNumOptWinInlierRight=," << mMetricStatistic.fNumOptWinInlierRight 
                         << ",timeTrackAll=," << mMetricStatistic.timeTrackAll << ",timeLKLeftOnce=," << mMetricStatistic.timeLKLeftOnce << ",timeLKLeftTwice=," << mMetricStatistic.timeLKLeftTwice << ",timeGFTTLeft=," << mMetricStatistic.timeGFTTLeft << ",timeGFTTLeftTestOnce=," << mMetricStatistic.timeGFTTLeftTestOnce << ",timeLKRightTwice=," << mMetricStatistic.timeLKRightTwice
                         << ",timeImuAll=," << mMetricStatistic.timeImuAll
                         << ",timeImgAll=," << mMetricStatistic.timeImgAll << ",timeImgAddFeature=," << mMetricStatistic.timeImgAddFeature << ",timeImgOptiAll=," << mMetricStatistic.timeImgOptiAll << ",timeImgOptiWin=," << mMetricStatistic.timeImgOptiWin << ",timeImgOptiCeres=," << mMetricStatistic.timeImgOptiCeres << ",timeImgSlideiWin=," << mMetricStatistic.timeImgSlideiWin 

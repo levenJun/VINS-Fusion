@@ -1223,7 +1223,8 @@ void Estimator::optimization()
         const int main_cam = it_per_id.feature_per_frame[0].main_cam;
         // Vector3d pts_i = it_per_id.feature_per_frame[0].point;//参考帧下的左目观测.fix,有可能是右目观测.
         Vector3d pts_i = it_per_id.feature_per_frame[0].point[main_cam];//参考帧下的左目观测.fix,有可能是右目观测.
-
+        mMetricStatistic.fNumOptWinAll++;
+        if(main_cam == 0) mMetricStatistic.fNumOptWinLeft++;
 /*
         for (auto &it_per_frame : it_per_id.feature_per_frame)//依次遍历所有观测. fix,这里认为是连续帧不断的观测.
         {

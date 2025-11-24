@@ -56,6 +56,9 @@ public:
                                    vector<cv::Point2f> &curLeftPts, 
                                    vector<cv::Point2f> &curRightPts,
                                    map<int, cv::Point2f> &prevLeftPtsMap);
+    void drawTrackMono(const int cid, const cv::Mat &imLeft, 
+                                vector<int> &curLeftIds, vector<cv::Point2f> &curLeftPts, map<int, cv::Point2f> &prevLeftPtsMap,
+                                cv::Mat &imOut);
     void setPrediction(int cid, map<int, Eigen::Vector3d> &predictPts);
     double distance(cv::Point2f &pt1, cv::Point2f &pt2);
     std::vector<int> removeOutliers(set<int> &removePtsIds);//返回内点数
