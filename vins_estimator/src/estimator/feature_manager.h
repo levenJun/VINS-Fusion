@@ -134,7 +134,8 @@ class FeatureManager
     void setRic(Matrix3d _ric[]);
     void clearState();
     int getFeatureCount();
-    bool addFeatureCheckParallax(int cur_frame_id, int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td);
+    // bool addFeatureCheckParallax(int cur_frame_id, int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td);
+    bool addFeatureCheckParallax(int cur_frame_id, int frame_count, const std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> &image, double td);
     vector<pair<Vector3d, Vector3d>> getCorresponding(int frame_count_l, int frame_count_r);
     //void updateDepth(const VectorXd &x);
     void setDepth(const VectorXd &x);

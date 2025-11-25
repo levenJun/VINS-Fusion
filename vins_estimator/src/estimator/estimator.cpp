@@ -175,7 +175,7 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
         featureFrameMulti = featureTracker.trackImage(t, _img);
     else
         featureFrameMulti = featureTracker.trackImage(t, _img, _img1);
-    featureFrame = featureFrameMulti[0];//暂时只取左目结果
+    // featureFrame = featureFrameMulti[0];//暂时只取左目结果
     //printf("featureTracker time: %f\n", featureTrackerTime.toc());
     mMetricStatistic.timeTrackAll = mTicTocMetric.tocMs();
 
@@ -193,14 +193,16 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
         if(inputImageCnt % 1 == 0)
         {
             mBuf.lock();
-            featureBuf.push(make_pair(t, featureFrame));
+            // featureBuf.push(make_pair(t, featureFrame));
+            featureBuf.push(make_pair(t, featureFrameMulti));
             mBuf.unlock();
         }
     }
     else
     {
         mBuf.lock();
-        featureBuf.push(make_pair(t, featureFrame));
+        // featureBuf.push(make_pair(t, featureFrame));
+        featureBuf.push(make_pair(t, featureFrameMulti));
         mBuf.unlock();
         TicToc processTime;
         processMeasurements();
@@ -226,10 +228,19 @@ void Estimator::inputIMU(double t, const Vector3d &linearAcceleration, const Vec
     }
 }
 
+//默认就只是添加左目,单目特征
 void Estimator::inputFeature(double t, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &featureFrame)
 {
+    std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> featureFrameMulti;
+    featureFrameMulti.emplace_back(featureFrame);
+    for (int cid = 1; cid < NUM_CAM; cid++)
+    {
+        featureFrameMulti.emplace_back(map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>());
+    }
+    
     mBuf.lock();
-    featureBuf.push(make_pair(t, featureFrame));
+    // featureBuf.push(make_pair(t, featureFrame));
+    featureBuf.push(make_pair(t, featureFrameMulti));
     mBuf.unlock();
 
     if(!MULTIPLE_THREAD)
@@ -286,7 +297,8 @@ void Estimator::processMeasurements()
     while (1)
     {
         //printf("process measurments\n");
-        pair<double, map<int, vector<pair<int, Eigen::Matrix<double, 7, 1> > > > > feature;
+        // pair<double, map<int, vector<pair<int, Eigen::Matrix<double, 7, 1> > > > > feature;
+        pair<double, std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1> > > > > > feature;
         vector<pair<double, Eigen::Vector3d>> accVector, gyrVector;
         if(!featureBuf.empty())
         {
@@ -427,10 +439,12 @@ void Estimator::processIMU(double t, double dt, const Vector3d &linear_accelerat
     gyr_0 = angular_velocity; 
 }
 
-void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, const double header)
+// void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, const double header)
+void Estimator::processImage(const std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> &image, const double header)
 {
     ROS_DEBUG("new image coming ------------------------------------------");
-    ROS_DEBUG("Adding feature points %lu", image.size());
+    ROS_DEBUG("Adding feature points %lu", image[0].size());
+    assert(image.size() == NUM_CAM);
     TicToc mTicTocMetric;
     if (f_manager.addFeatureCheckParallax(cur_frame_id, frame_count, image, td))
     {
@@ -448,7 +462,8 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
     ROS_DEBUG("number of feature: %d", f_manager.getFeatureCount());
     Headers[frame_count] = header;
 
-    ImageFrame imageframe(image, header);                   //fix:这里只用到单目追踪结果,且默认是左目?实际可能是多目，且存在纯右目? 
+    // ImageFrame imageframe(image, header);
+    ImageFrame imageframe(image[0], header);                   //fix:这里只用到单目追踪结果,且默认是左目?实际可能是多目，且存在纯右目? 
                                                             //这里就把原始的左目追踪结果给之,不会影响流程? 需要关注!!
     imageframe.pre_integration = tmp_pre_integration;
     all_image_frame.insert(make_pair(header, imageframe));

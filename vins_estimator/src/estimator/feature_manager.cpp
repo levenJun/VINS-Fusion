@@ -50,7 +50,8 @@ int FeatureManager::getFeatureCount()
 
 //本帧最新特征刷新地图点列表feature（老点累加观测，新点创建新MP）
 //用追踪强弱和平移视差来判断是否要KF:MARGIN_OLD
-bool FeatureManager::addFeatureCheckParallax(int cur_frame_id, int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td)
+// bool FeatureManager::addFeatureCheckParallax(int cur_frame_id, int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td)
+bool FeatureManager::addFeatureCheckParallax(int cur_frame_id, int frame_count, const std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> &image, double td)
 {
     ROS_DEBUG("input feature: %d", (int)image.size());
     ROS_DEBUG("num of feature: %d", getFeatureCount());
@@ -65,8 +66,10 @@ bool FeatureManager::addFeatureCheckParallax(int cur_frame_id, int frame_count, 
 
     //以特征MP为核心构建所有帧的观测.
     //feature是滑窗地图所有MP点.  feature[i]是单个特征, feature[i].feature_per_frame 是FeaturePerFrame列表，记录所有帧对本特征的观测信息.
-    int curCamId = 0;   //主相机id
-    for (auto &id_pts : image)
+    // int curCamId = 0;   //主相机id
+    for (int curCamId = 0; curCamId < image.size(); curCamId++)
+    for (auto &id_pts : image[curCamId])
+    // for (auto &id_pts : image)
     {
         // FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
         // assert(id_pts.second[0].first == 0);
@@ -107,7 +110,8 @@ bool FeatureManager::addFeatureCheckParallax(int cur_frame_id, int frame_count, 
 
     //if (frame_count < 2 || last_track_num < 20)
     //if (frame_count < 2 || last_track_num < 20 || new_feature_num > 0.5 * last_track_num)
-    if (frame_count < 2 || last_track_num < 20 || long_track_num < 40 || new_feature_num > 0.5 * last_track_num)
+    // if (frame_count < 2 || last_track_num < 20 || long_track_num < 40 || new_feature_num > 0.5 * last_track_num)
+    if (frame_count < 2 || last_track_num < 20*1.5 || long_track_num < 40*1.5 || new_feature_num > 0.5 * last_track_num)
         return true;
 
     for (auto &it_per_id : feature)
