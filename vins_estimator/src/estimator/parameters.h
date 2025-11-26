@@ -21,7 +21,8 @@
 
 using namespace std;
 
-const double FOCAL_LENGTH = 460.0;
+// const double FOCAL_LENGTH = 460.0;
+const double FOCAL_LENGTH = 230.0;
 const int WINDOW_SIZE = 20;
 // const int WINDOW_SIZE = 10;
 const int NUM_OF_F = 1000;
@@ -37,6 +38,7 @@ extern double GYR_N, GYR_W;
 extern std::vector<Eigen::Matrix3d> RIC;
 extern std::vector<Eigen::Vector3d> TIC;
 extern Eigen::Vector3d G;
+extern std::vector<cv::Mat> ImgMask;
 
 extern double BIAS_ACC_THRESHOLD;
 extern double BIAS_GYR_THRESHOLD;

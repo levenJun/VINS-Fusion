@@ -135,6 +135,14 @@ public:
     static bool SearchNeiboursByGrid(const std::vector<cv::KeyPoint>& oriKpts, const std::vector<cv::Point2f>& searchKpts, 
                                         std::vector<int>& result, 
                                         const double mcGridSize = 1.0, const double distMax = 0.5);
+    
+    static bool GenFishEysMask(const int row , const int col, const int padding, cv::Mat& maskOut){
+        maskOut = cv::Mat(row, col, CV_8UC1, cv::Scalar(0));
+        const auto center = cv::Point2f(col/2, row/2);  // 圆心坐标
+        const int radius = col/2 + padding;       // 圆半径
+        cv::circle(maskOut, center, radius, cv::Scalar(255), -1);
+        return true;
+    };
 };
 
 }

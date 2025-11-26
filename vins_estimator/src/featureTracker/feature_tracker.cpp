@@ -60,7 +60,11 @@ FeatureTracker::FeatureTracker()
 // void FeatureTracker::setMask()
 void FeatureTracker::setMask(int cid)
 {
-    vTrackInfoMono[cid].mask = cv::Mat(row, col, CV_8UC1, cv::Scalar(255));
+    if(false){
+        vTrackInfoMono[cid].mask = cv::Mat(row, col, CV_8UC1, cv::Scalar(255));
+    }else{
+        vTrackInfoMono[cid].mask = ImgMask[cid].clone();
+    }
 
     // prefer to keep features that are tracked for long time
     vector<pair<int, pair<cv::Point2f, int>>> cnt_pts_id;

@@ -8,7 +8,7 @@
  *******************************************************/
 
 #include "parameters.h"
-
+#include "HelperOpencv.h"
 double INIT_DEPTH;//默认取5.0
 double MIN_PARALLAX;
 double ACC_N, ACC_W;
@@ -16,6 +16,7 @@ double GYR_N, GYR_W;
 
 std::vector<Eigen::Matrix3d> RIC;
 std::vector<Eigen::Vector3d> TIC;
+std::vector<cv::Mat> ImgMask;
 
 Eigen::Vector3d G{0.0, 0.0, 9.8};
 
@@ -197,6 +198,18 @@ void readParameters(std::string config_file)
         assert(0);
     }
 
+    ROW = fsSettings["image_height"];
+    COL = fsSettings["image_width"];
+    ROS_INFO("ROW: %d COL: %d ", ROW, COL);
+    ImgMask.clear();
+    for (int cid = 0; cid < NUM_CAM; cid++)
+    {
+        cv::Mat maskX;
+        if(!MyHelpers::HelperOpencv::GenFishEysMask(ROW, COL, 10, maskX)){
+            assert(false);
+        }
+        ImgMask.push_back(maskX);
+    }
 
     int pn = config_file.find_last_of('/');
     std::string configPath = config_file.substr(0, pn);
@@ -234,9 +247,6 @@ void readParameters(std::string config_file)
     else
         ROS_INFO_STREAM("Synchronized sensors, fix time offset: " << TD);
 
-    ROW = fsSettings["image_height"];
-    COL = fsSettings["image_width"];
-    ROS_INFO("ROW: %d COL: %d ", ROW, COL);
 
     if(!USE_IMU)
     {
