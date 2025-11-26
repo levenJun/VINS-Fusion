@@ -104,6 +104,7 @@ void sync_process()
     mHelperDataSaver = std::shared_ptr<MyHelpers::HelperDataSaver>(new MyHelpers::HelperDataSaver());
     mHelperDataSaver->setRootDirectory("./output/p1/");
     mHelperDataSaver->startSaving();
+    mHelperDataSaver->saveMaskImage();
 
     std::shared_ptr<LevenBF::Utils::UtilsKeybordManager> mKeybordManager = std::make_shared<LevenBF::Utils::UtilsKeybordManager>();
     mKeybordManager->start();
@@ -336,6 +337,12 @@ void sync_process()
 
                 mHelperDataSaver->savePoseData(timestamp, poseT, poseQ);
             }
+            if(!estimator.featureTracker.imTrack.empty()){
+                double timestamp = data_cam0.stamp;
+                std::string trackName = "track_" + std::to_string(timestamp) + "_" + std::to_string(NUM_CAM) + "_" + std::to_string(estimator.solver_flag) + ".jpg";
+                mHelperDataSaver->saveTrackImage(trackName, estimator.featureTracker.imTrack);
+                // mHelperDataSaver->saveTrackImage(trackName, estimator.featureTracker.vTrackInfoMono[0].mask);
+            }
         }
 
         data_cam0 = mpHeadDataReader->ReadStereoImage();        
@@ -344,6 +351,7 @@ void sync_process()
         // std::chrono::milliseconds dura(2);
         // std::this_thread::sleep_for(dura);
 
+        // if(mKeybordManager && !mKeybordManager->isKeySpace()){
         if(mKeybordManager && mKeybordManager->isKeySpace()){
             int index = 0;
             while(mKeybordManager && !mKeybordManager->isKeySpace()){                

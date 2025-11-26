@@ -14,11 +14,13 @@
 #include <sstream>  // 新增：字符串流
 #include "HelperFile.hpp"
 #include "HelperTime.h"
+#include "HelperOpencv.h"
 // namespace fs = std::filesystem;
 namespace MyHelpers{
 class HelperDataSaver {
 private:
     std::string root_dir_;          // 根目录（包含时间子目录）
+    std::string track_img_dir_;     // track图片的保存目录
     bool is_saving_ = false;        // 保存状态标志
     std::ofstream imu_file_;        // IMU文件流
     std::ofstream pose_file_;       // Pose文件流
@@ -109,7 +111,11 @@ public:
             pose_file_.close();
             return false;
         }        
-
+        track_img_dir_ = root_dir_ + "/tmp/track_img";
+        // 创建子目录
+        if (!createDirectory(track_img_dir_)) {
+            return false;
+        }
         is_saving_ = true;
         std::cout << "数据保存已启动，保存路径: " << root_dir_ << std::endl;
         return true;
@@ -146,6 +152,37 @@ public:
             std::cerr << "图像保存失败: " << path << std::endl;
         }
     }
+
+    void saveTrackImage(std::string fileName, const cv::Mat& image){
+        if (!is_saving_) return;
+        if (image.empty()) {
+            std::cout << "saveTrackImage. 警告：空图像，跳过保存" << std::endl;
+            return;
+        }
+        std::string path = track_img_dir_ + "/" + fileName;
+        if (!cv::imwrite(path, image)) {
+            std::cerr << "saveTrackImage. 图像保存失败: " << path << std::endl;
+        }
+    };
+
+    void saveMaskImage(){
+
+        if (!is_saving_) return;        
+        int row = 480, col = 640, padding = 10;
+        cv::Mat maskX;
+        if(!MyHelpers::HelperOpencv::GenFishEysMask(row, col, padding, maskX)){
+            return;
+        }
+        // = cv::Mat(row, col, CV_8UC1, cv::Scalar(0));
+        // const auto CENTER = cv::Point2f(col/2, row/2);  // 圆心坐标
+        // const int radius = col/2 + 10;       // 圆半径
+        // cv::circle(maskX, CENTER, radius, cv::Scalar(255), -1);
+        std::string fileName = "fish_mask.png";
+        std::string path = root_dir_ + "/" + fileName;
+        if (!cv::imwrite(path, maskX)) {
+            std::cerr << "saveMaskImage. 图像保存失败: " << path << std::endl;
+        }
+    };
 
     // 保存IMU数据（格式：timestamp, ax, ay, az, gx, gy, gz）
     void saveImuData(double timestamp, const std::vector<float>& imu_data) {
