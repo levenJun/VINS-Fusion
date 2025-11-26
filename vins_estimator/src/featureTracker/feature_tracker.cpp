@@ -97,6 +97,82 @@ double FeatureTracker::distance(cv::Point2f &pt1, cv::Point2f &pt2)
     return sqrt(dx * dx + dy * dy);
 }
 
+bool FeatureTracker::splitBlockGoodFeaturesToTrack(const cv::Mat& cur_img, const int num_curpts, std::vector<cv::Point2f>& new_pts, const int num_max, const int min_dist, cv::Mat& mask){
+    new_pts.clear();
+    int need_cnt = num_max - num_curpts;  // 还需提取的特征点数量
+    if (need_cnt <= 0) return true;
+    assert(BLOCK_NUM >= 1 && (BLOCK_NUM % 2 == 1));
+
+    int img_h = cur_img.rows;
+    int img_w = cur_img.cols;
+    int block_w = img_w / BLOCK_NUM;          // 单块宽度（基础值）
+    int block_h = img_h / BLOCK_NUM;          // 单块高度（基础值）
+ 
+    // 计算每个块的基础提点数量 + 余数分配
+    int per_block_base = need_cnt / (BLOCK_NUM * BLOCK_NUM);
+    int remainder = need_cnt % (BLOCK_NUM * BLOCK_NUM);
+ 
+    const int blockHalf = BLOCK_NUM / 2;
+    for (int cid = 0; cid <= blockHalf; cid++)
+    for (int cflag = -1; cflag <= 1; cflag+=2)
+    {
+        if(cid == 0 && cflag != -1) continue;
+        int i = blockHalf + cid * cflag;            //1,0,2
+        for (int rid = 0; rid <= blockHalf; rid++)
+        for (int rflag = -1; rflag <= 1; rflag+=2)
+        {
+            if(rid == 0 && rflag != -1) continue;
+            int j = blockHalf + rid * rflag;        //1,0,2
+
+            // std::cout << "splitBlockGoodFeaturesToTrack try, i=," << i << ",j=," << j << std::endl;
+
+            // 1. 计算当前块的ROI（处理边界：最后一行/列包含剩余像素）
+            int x_start = j * block_w;
+            int y_start = i * block_h;
+            int cur_block_w = (j == BLOCK_NUM-1) ? (img_w - x_start) : block_w;
+            int cur_block_h = (i == BLOCK_NUM-1) ? (img_h - y_start) : block_h;
+            cv::Rect block_roi(x_start, y_start, cur_block_w, cur_block_h);
+            
+            // 跳过无效ROI（如空块）
+            if (cur_block_w <=0 || cur_block_h <=0) continue;
+ 
+            // 2. 计算当前块的目标提点数量（余数优先分配给前N个块）
+            int block_target = per_block_base;
+            if(remainder > 0){
+                if(remainder >= 2){
+                    block_target += 2;
+                    remainder -= 2;
+                }else{
+                    block_target++;
+                    remainder--;
+                }
+            }
+            if (block_target <=0 ) continue;
+ 
+            cv::Mat block_img = cur_img(block_roi);  // 取当前块的图像ROI            
+            // 3. 提取当前块的mask子区域（避免与已有点重复）
+            cv::Mat sub_mask = mask(block_roi);
+ 
+            // 4. 块内独立提取特征点
+            std::vector<cv::Point2f> block_pts;
+            cv::goodFeaturesToTrack(
+                block_img, block_pts, block_target, 
+                0.01, min_dist, sub_mask  // 保持原算法的质量阈值和距离约束
+            );
+            // 5. 转换块内点坐标到全图坐标（关键！）
+            for (auto& pt : block_pts) {
+                pt.x += x_start;  // 块内x → 全图x
+                pt.y += y_start;  // 块内y → 全图y
+            }
+
+            new_pts.insert(new_pts.end(), block_pts.begin(), block_pts.end());
+        }
+    }
+
+    std::cout << "splitBlockGoodFeaturesToTrack, need_cnt=," << need_cnt << ",new_pts.size=," << new_pts.size() << ",diffsize=," << (need_cnt - new_pts.size()) << std::endl;
+    return true;
+};
+
 // map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1)
 std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1)
 {
@@ -193,13 +269,11 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
         for (auto &n : vTrackInfoMono[cid].track_cnt)
             n++;
 
-        mMetricStatistic.fNumLkPreLeft = 0;
-        mMetricStatistic.fNumLkPreAll = 0;
-        for (int cid = 0; cid < NUM_CAM; cid++)
-        {
-            if(cid == 0)mMetricStatistic.fNumLkPreLeft = vTrackInfoMono[cid].cur_pts.size();
-            mMetricStatistic.fNumLkPreAll += vTrackInfoMono[cid].cur_pts.size();
+        if(cid == 0){
+            mMetricStatistic.fNumLkPreLeft = vTrackInfoMono[cid].cur_pts.size();
+            mMetricStatistic.fNumLkPreAll = 0;
         }
+        mMetricStatistic.fNumLkPreAll += vTrackInfoMono[cid].cur_pts.size();
 
         mTicTocGFTTLeft.tic();
         if (1)
@@ -213,13 +287,17 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
             ROS_DEBUG("detect feature begins");
             TicToc t_t;
             int n_max_cnt = MAX_CNT - static_cast<int>(vTrackInfoMono[cid].cur_pts.size());
-            if (n_max_cnt > 0)
+            // if (n_max_cnt > 0)
+            if (n_max_cnt > 0 && n_max_cnt > MAX_CNT*0.1)
             {
                 if(vTrackInfoMono[cid].mask.empty())
                     cout << "mask is empty " << endl;
                 if (vTrackInfoMono[cid].mask.type() != CV_8UC1)
                     cout << "mask type wrong " << endl;
-                cv::goodFeaturesToTrack(vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].n_pts, MAX_CNT - vTrackInfoMono[cid].cur_pts.size(), 0.01, MIN_DIST, vTrackInfoMono[cid].mask);
+                // cv::goodFeaturesToTrack(vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].n_pts, MAX_CNT - vTrackInfoMono[cid].cur_pts.size(), 0.01, MIN_DIST, vTrackInfoMono[cid].mask);
+                if(!splitBlockGoodFeaturesToTrack(vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].cur_pts.size(), vTrackInfoMono[cid].n_pts, MAX_CNT, MIN_DIST, vTrackInfoMono[cid].mask)){
+                    vTrackInfoMono[cid].n_pts.clear();
+                }
             }
             else
                 vTrackInfoMono[cid].n_pts.clear();

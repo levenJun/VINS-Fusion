@@ -40,6 +40,7 @@ map<int, Eigen::Vector3d> pts_gt;
 std::string IMAGE0_TOPIC, IMAGE1_TOPIC;
 std::string FISHEYE_MASK;
 std::vector<std::string> CAM_NAMES;
+int BLOCK_NUM = 3;//分块提点        需要保证是奇数
 int MAX_CNT;
 int MIN_DIST;
 double F_THRESHOLD;
