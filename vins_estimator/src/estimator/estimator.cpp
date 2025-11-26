@@ -586,7 +586,9 @@ void Estimator::processImage(const std::vector<map<int, vector<pair<int, Eigen::
         TicToc t_solve;
         if(!USE_IMU)
             f_manager.initFramePoseByPnP(frame_count, Ps, Rs, tic, ric);
-        f_manager.triangulate(frame_count, Ps, Rs, tic, ric);//在滑窗优化前，直接提前三角化了. fix, maybe在滑窗优化后再三角化更好?
+        f_manager.triangulate(frame_count, Ps, Rs, tic, ric, false);//在滑窗优化前，直接提前三角化了. fix, maybe在滑窗优化后再三角化更好?
+        // f_manager.triangulate(frame_count, Ps, Rs, tic, ric, true);//在滑窗优化前，直接提前三角化了. fix, maybe在滑窗优化后再三角化更好?
+        // f_manager.triangulate(frame_count, Ps, Rs, tic, ric);//在滑窗优化前，直接提前三角化了. fix, maybe在滑窗优化后再三角化更好?
         optimization();
         mMetricStatistic.timeImgOptiWin = mTicTocMetric.tocMs();
         //计算所有地图点MP的平均重投影误差,大于3个px就剔除
@@ -612,7 +614,7 @@ void Estimator::processImage(const std::vector<map<int, vector<pair<int, Eigen::
             ROS_WARN("system reboot!");
             return;
         }
-
+        f_manager.triangulate(frame_count, Ps, Rs, tic, ric, true);//在滑窗优化前，直接提前三角化了. fix, maybe在滑窗优化后再三角化更好?
         slideWindow();
         f_manager.removeFailures();//剔除深度为负的地图MP点
         // prepare output of VINS
@@ -836,6 +838,7 @@ bool Estimator::visualInitialAlign()
     // ROS_DEBUG_STREAM("my R0  " << Utility::R2ypr(Rs[0]).transpose()); 
 
     f_manager.clearDepth();
+    // f_manager.triangulate(frame_count, Ps, Rs, tic, ric, true);
     f_manager.triangulate(frame_count, Ps, Rs, tic, ric);
 
     {
@@ -923,6 +926,7 @@ bool Estimator::visualInitialAlignIgnoreScale()
     // ROS_DEBUG_STREAM("my R0  " << Utility::R2ypr(Rs[0]).transpose()); 
 
     f_manager.clearDepth();
+    // f_manager.triangulate(frame_count, Ps, Rs, tic, ric, true);//重新三角化所有地图点.
     f_manager.triangulate(frame_count, Ps, Rs, tic, ric);//重新三角化所有地图点.
 
     {

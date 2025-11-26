@@ -331,7 +331,8 @@ void FeatureManager::initFramePoseByPnP(int frameCnt, Vector3d Ps[], Matrix3d Rs
     }
 }
 
-void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vector3d tic[], Matrix3d ric[])
+//triangleAll:false-只作双目三角化;true-按原始流程作三角化
+void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vector3d tic[], Matrix3d ric[], bool triangleAll)
 {
     for (auto &it_per_id : feature)
     {
@@ -397,6 +398,9 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
             printf("stereo %d pts: %f %f %f gt: %f %f %f \n",it_per_id.feature_id, point3d.x(), point3d.y(), point3d.z(),
                                                             ptsGt.x(), ptsGt.y(), ptsGt.z());
             */
+            continue;
+        }
+        else if(!triangleAll){
             continue;
         }
         else if(it_per_id.feature_per_frame.size() > 1)//前后多帧三角化. fix,1这里只用了左目特征;2这里没有检查基线长度;3这里只用了前后2帧
@@ -515,6 +519,332 @@ void FeatureManager::triangulate(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vec
         }
 
     }
+}
+
+void FeatureManager::triangulate2(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Vector3d tic[], Matrix3d ric[], bool withScale)
+{
+    int triNumStereo = 0, triNumTwo = 0, triNumMulti = 0, triNumMultiFail0 = 0, triNumMultiFail1 = 0, triNumMultiFail2 = 0;
+    // 定义一个固定的像素误差阈值 (基于 2.5 sigma * 2 像素噪声)
+    const double MAX_REPROJ_ERROR_PIXELS = 5.0; 
+    // 定义最小视差角 (cos(2.5 度) ~ 0.999)
+    const double MIN_PARALLAX_COS_MOTION = 0.999;
+    // 定义立体匹配的最小视差角 (cos(0.4 度) ~ 0.99998), 允许点更远
+    // const double MIN_PARALLAX_COS_STEREO = 0.99998;
+    const double MIN_PARALLAX_COS_STEREO = 0.9998;
+    // const double MIN_PARALLAX_COS_STEREO = 0.99992;
+    double minDepth = withScale? 0.1 : 0;
+    for (auto &it_per_id : feature)
+    {
+        if (it_per_id.estimated_depth > 0)
+            continue;
+        const int mainCam = it_per_id.feature_per_frame[0].main_cam;
+        // if(STEREO && it_per_id.feature_per_frame[0].is_stereo)//双目三角化,算是靠谱。fix:这里要求只能是初始参考帧双目,中间的双目被忽视了
+        if(STEREO && it_per_id.feature_per_frame[0].is_stereoX())//双目三角化,算是靠谱。fix:这里要求只能是初始参考帧双目,中间的双目被忽视了
+        {
+            //找第一个有效从camera
+            int slaveCam = -1;
+            for (int cid = 0; cid < NUM_CAM; cid++)
+            {
+                if(cid == mainCam) continue;
+                if(it_per_id.feature_per_frame[0].is_observed[cid]){
+                    slaveCam = cid;
+                    break;
+                }
+            }
+            if(slaveCam == -1 || slaveCam == mainCam){
+                std::cout << "triangulate warn 1, mainCam=," << mainCam << ",slaveCam=," << slaveCam << std::endl;
+                continue;
+            }
+            
+            int imu_i = it_per_id.start_frame;
+            Eigen::Matrix<double, 3, 4> leftPose;
+            // Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
+            // Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
+            Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[mainCam];
+            Eigen::Matrix3d R0 = Rs[imu_i] * ric[mainCam];
+            leftPose.leftCols<3>() = R0.transpose();
+            leftPose.rightCols<1>() = -R0.transpose() * t0;
+            //cout << "left pose " << leftPose << endl;
+
+            Eigen::Matrix<double, 3, 4> rightPose;
+            // Eigen::Vector3d t1 = Ps[imu_i] + Rs[imu_i] * tic[1];
+            // Eigen::Matrix3d R1 = Rs[imu_i] * ric[1];
+            Eigen::Vector3d t1 = Ps[imu_i] + Rs[imu_i] * tic[slaveCam];
+            Eigen::Matrix3d R1 = Rs[imu_i] * ric[slaveCam];
+            rightPose.leftCols<3>() = R1.transpose();
+            rightPose.rightCols<1>() = -R1.transpose() * t1;
+            //cout << "right pose " << rightPose << endl;
+
+            Eigen::Vector2d point0, point1;
+            Eigen::Vector3d point3d;
+            // point0 = it_per_id.feature_per_frame[0].point.head(2);
+            // point1 = it_per_id.feature_per_frame[0].pointRight.head(2);
+            point0 = it_per_id.feature_per_frame[0].point[mainCam].head(2);
+            point1 = it_per_id.feature_per_frame[0].point[slaveCam].head(2);
+            //cout << "point0 " << point0.transpose() << endl;
+            //cout << "point1 " << point1.transpose() << endl;
+
+            Eigen::Vector3d ray_left_w = R0 * Eigen::Vector3d(point0.x(), point0.y(), 1.0);
+            Eigen::Vector3d ray_right_w = R1 * Eigen::Vector3d(point1.x(), point1.y(), 1.0);
+            double cos_parallax_stereo = ray_left_w.dot(ray_right_w) / (ray_left_w.norm() * ray_right_w.norm());
+            
+            double depth = -1;
+            // 只有视差足够大时才尝试
+            if (cos_parallax_stereo < MIN_PARALLAX_COS_STEREO)
+            {
+                Eigen::Vector3d point3d_w; // 3D点 in World frame
+                triangulatePoint(leftPose, rightPose, point0, point1, point3d_w);
+
+                // 转换到左相机坐标系
+                Eigen::Vector3d point_in_cam_left = leftPose.leftCols<3>() * point3d_w + leftPose.rightCols<1>();
+                // 转换到右相机坐标系
+                Eigen::Vector3d point_in_cam_right = rightPose.leftCols<3>() * point3d_w + rightPose.rightCols<1>();
+
+                // --- 1b. 正深度检查 (Positive Depth Check) ---
+                if (point_in_cam_left.z() > minDepth && point_in_cam_right.z() > minDepth)
+                {
+                    // --- 1c. 重投影误差检查 (Reprojection Error Check) ---
+                    Eigen::Vector2d proj_left(point_in_cam_left.x() / point_in_cam_left.z(), point_in_cam_left.y() / point_in_cam_left.z());
+                    Eigen::Vector2d proj_right(point_in_cam_right.x() / point_in_cam_right.z(), point_in_cam_right.y() / point_in_cam_right.z());
+
+                    double err_left_px = (proj_left - point0).norm() * FOCAL_LENGTH;
+                    double err_right_px = (proj_right - point1).norm() * FOCAL_LENGTH;
+
+                    if (err_left_px < MAX_REPROJ_ERROR_PIXELS && err_right_px < MAX_REPROJ_ERROR_PIXELS)
+                    {
+                        // 所有检查通过
+                        depth = point_in_cam_left.z();
+                        // it_per_id.estimated_depth = point_in_cam_left.z();                        
+                        // continue; // 三角化成功, 跳过后续SVD
+                    }
+                }
+            }
+            /*
+            triangulatePoint(leftPose, rightPose, point0, point1, point3d);
+            Eigen::Vector3d localPoint;
+            localPoint = leftPose.leftCols<3>() * point3d + leftPose.rightCols<1>();
+            double depth = localPoint.z();
+            */
+            if (depth > minDepth)
+                it_per_id.estimated_depth = depth;
+            else
+                it_per_id.estimated_depth = INIT_DEPTH;
+            /*
+            Vector3d ptsGt = pts_gt[it_per_id.feature_id];
+            printf("stereo %d pts: %f %f %f gt: %f %f %f \n",it_per_id.feature_id, point3d.x(), point3d.y(), point3d.z(),
+                                                            ptsGt.x(), ptsGt.y(), ptsGt.z());
+            */
+           triNumStereo++;
+            continue;
+        }
+        else if(false && it_per_id.feature_per_frame.size() > 1)//前后多帧三角化. fix,1这里只用了左目特征;2这里没有检查基线长度;3这里只用了前后2帧
+        // else if(it_per_id.feature_per_frame.size() > 1)//前后多帧三角化. fix,1这里只用了左目特征;2这里没有检查基线长度;3这里只用了前后2帧
+        {
+            if(it_per_id.feature_per_frame[0].is_observed[mainCam] == false){
+                std::cout << "triangulate warn 2, mainCam=," << mainCam << std::endl;
+                continue;
+            }
+            if(it_per_id.feature_per_frame[1].is_observed[mainCam] == false){
+                continue;
+            }
+            int imu_i = it_per_id.start_frame;
+            Eigen::Matrix<double, 3, 4> leftPose;
+            // Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
+            // Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
+            Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[mainCam];
+            Eigen::Matrix3d R0 = Rs[imu_i] * ric[mainCam];
+            leftPose.leftCols<3>() = R0.transpose();
+            leftPose.rightCols<1>() = -R0.transpose() * t0;
+
+            imu_i++;
+            Eigen::Matrix<double, 3, 4> rightPose;
+            // Eigen::Vector3d t1 = Ps[imu_i] + Rs[imu_i] * tic[0];
+            // Eigen::Matrix3d R1 = Rs[imu_i] * ric[0];
+            Eigen::Vector3d t1 = Ps[imu_i] + Rs[imu_i] * tic[mainCam];
+            Eigen::Matrix3d R1 = Rs[imu_i] * ric[mainCam];
+            rightPose.leftCols<3>() = R1.transpose();
+            rightPose.rightCols<1>() = -R1.transpose() * t1;
+
+            Eigen::Vector2d point0, point1;
+            Eigen::Vector3d point3d;
+            // point0 = it_per_id.feature_per_frame[0].point.head(2);
+            // point1 = it_per_id.feature_per_frame[1].point.head(2);
+            point0 = it_per_id.feature_per_frame[0].point[mainCam].head(2);
+            point1 = it_per_id.feature_per_frame[1].point[mainCam].head(2);
+            triangulatePoint(leftPose, rightPose, point0, point1, point3d);
+            Eigen::Vector3d localPoint;
+            localPoint = leftPose.leftCols<3>() * point3d + leftPose.rightCols<1>();
+            double depth = localPoint.z();
+            if (depth > minDepth)
+                it_per_id.estimated_depth = depth;
+            else
+                it_per_id.estimated_depth = INIT_DEPTH;
+            /*
+            Vector3d ptsGt = pts_gt[it_per_id.feature_id];
+            printf("motion  %d pts: %f %f %f gt: %f %f %f \n",it_per_id.feature_id, point3d.x(), point3d.y(), point3d.z(),
+                                                            ptsGt.x(), ptsGt.y(), ptsGt.z());
+            */
+            triNumTwo++;
+            continue;
+        }
+        it_per_id.used_num = it_per_id.feature_per_frame.size();
+        if (it_per_id.used_num < 4)
+            continue;
+        triNumMulti++;
+        int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
+
+        Eigen::MatrixXd svd_A(2 * it_per_id.feature_per_frame.size(), 4);
+        int svd_idx = 0;
+
+        Eigen::Matrix<double, 3, 4> P0;
+        // Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
+        // Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
+        Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[mainCam];//以主相机pose为基准
+        Eigen::Matrix3d R0 = Rs[imu_i] * ric[mainCam];
+        P0.leftCols<3>() = Eigen::Matrix3d::Identity();
+        P0.rightCols<1>() = Eigen::Vector3d::Zero();
+
+        double motionLine = 0;//位移总长度
+        for (auto &it_per_frame : it_per_id.feature_per_frame)//fix,这里对单帧只考虑了主相机观测,其余相机观测也可以考虑进来
+        {
+            imu_j++;
+            int slaveCam = mainCam;
+            if(it_per_frame.is_observed[slaveCam] == false){
+                for (int cid = 0; cid < NUM_CAM; cid++)
+                {
+                    if(cid == mainCam) continue;
+                    if(it_per_frame.is_observed[cid]){
+                        slaveCam = cid;
+                        break;
+                    }
+                }
+            }
+            if(it_per_frame.is_observed[slaveCam] == false){
+                std::cout << "triangulate warn 3, mainCam=," << mainCam << std::endl;
+                continue;//没找到
+            }
+
+            // Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[0];
+            // Eigen::Matrix3d R1 = Rs[imu_j] * ric[0];
+            Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[slaveCam];
+            Eigen::Matrix3d R1 = Rs[imu_j] * ric[slaveCam];
+            Eigen::Vector3d t = R0.transpose() * (t1 - t0);
+            Eigen::Matrix3d R = R0.transpose() * R1;
+            Eigen::Matrix<double, 3, 4> P;
+            P.leftCols<3>() = R.transpose();
+            P.rightCols<1>() = -R.transpose() * t;
+            // Eigen::Vector3d f = it_per_frame.point.normalized();
+            Eigen::Vector3d f = it_per_frame.point[slaveCam].normalized();
+            svd_A.row(svd_idx++) = f[0] * P.row(2) - f[2] * P.row(0);
+            svd_A.row(svd_idx++) = f[1] * P.row(2) - f[2] * P.row(1);
+
+            motionLine += t.norm();
+            if (imu_i == imu_j)
+                continue;
+        }
+        if(motionLine < 0.15){//位移不够，暂留不处理
+            triNumMultiFail0++;
+            continue;
+        }
+        ROS_ASSERT(svd_idx == svd_A.rows());
+        Eigen::Vector4d svd_V = Eigen::JacobiSVD<Eigen::MatrixXd>(svd_A, Eigen::ComputeThinV).matrixV().rightCols<1>();
+        double depth = svd_V[2] / svd_V[3];
+        //it_per_id->estimated_depth = -b / A;
+        //it_per_id->estimated_depth = svd_V[2] / svd_V[3];
+
+        it_per_id.estimated_depth = depth;
+        //it_per_id->estimated_depth = INIT_DEPTH;
+
+        if (it_per_id.estimated_depth < 0.1)
+        {
+            it_per_id.estimated_depth = INIT_DEPTH;
+            triNumMultiFail1++;
+            continue;
+        }
+
+        //进一步校验重投影误差
+        Eigen::Vector3d P_in_cam_i( (svd_V[0] / svd_V[3]), (svd_V[1] / svd_V[3]), depth );
+
+        // --- 3b. SVD 重投影误差检查 (SVD Reprojection Error Check) ---
+        bool reproj_ok = true;
+        imu_j = imu_i - 1;
+        for (auto &it_per_frame : it_per_id.feature_per_frame)
+        {
+            imu_j++;
+
+            int slaveCam = mainCam;
+            if(it_per_frame.is_observed[slaveCam] == false){
+                for (int cid = 0; cid < NUM_CAM; cid++)
+                {
+                    if(cid == mainCam) continue;
+                    if(it_per_frame.is_observed[cid]){
+                        slaveCam = cid;
+                        break;
+                    }
+                }
+            }
+            if(it_per_frame.is_observed[slaveCam] == false){
+                std::cout << "triangulate warn 4, mainCam=," << mainCam << std::endl;
+                continue;//没找到
+            }
+
+            // Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[0];
+            // Eigen::Matrix3d R1 = Rs[imu_j] * ric[0];
+            Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[slaveCam];
+            Eigen::Matrix3d R1 = Rs[imu_j] * ric[slaveCam];
+            Eigen::Vector3d t_ci_cj = R0.transpose() * (t1 - t0);
+            Eigen::Matrix3d R_ci_cj = R0.transpose() * R1;
+
+            // // 重新计算 T_ci_cj
+            // Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[0];
+            // Eigen::Matrix3d R1 = Rs[imu_j] * ric[0];
+            // Eigen::Vector3d t_ci_cj = R0.transpose() * (t1 - t0);
+            // Eigen::Matrix3d R_ci_cj = R0.transpose() * R1;
+            Eigen::Matrix<double, 3, 4> P;
+            P.leftCols<3>() = R_ci_cj.transpose();
+            P.rightCols<1>() = -R_ci_cj.transpose() * t_ci_cj;
+
+            // 将点 P_in_cam_i 变换到 P_in_cam_j
+            Eigen::Vector3d P_in_cam_j = P.leftCols<3>() * P_in_cam_i + P.rightCols<1>();
+
+            // 检查所有帧的正深度
+            if (P_in_cam_j.z() <= 0)
+            {
+                reproj_ok = false;
+                break;
+            }
+
+            Eigen::Vector2d proj_j(P_in_cam_j.x() / P_in_cam_j.z(), P_in_cam_j.y() / P_in_cam_j.z());
+            Eigen::Vector2d obs_j = it_per_frame.point[slaveCam].head<2>();
+            double pixel_err = (proj_j - obs_j).norm() * FOCAL_LENGTH;
+            
+            if (pixel_err > MAX_REPROJ_ERROR_PIXELS)
+            {
+                reproj_ok = false;
+                break;
+            }
+        }
+
+        if (reproj_ok)
+        {
+            // 所有检查通过
+            it_per_id.estimated_depth = depth;
+            //if(svd_method >= 0.1)
+            //{
+            //    std::cout<<"using this SVD triangulate!"<<std::endl;
+            //}
+        }
+        else
+        {
+            triNumMultiFail2++;
+            // SVD 失败 (深度为负或重投影误差大)
+            it_per_id.estimated_depth = INIT_DEPTH;
+        }
+
+    }
+
+    std::cout << "try triangulate, frameCnt=," << frameCnt << ",triNumStereo=," << triNumStereo << ",triNumTwo=," << triNumTwo << ",triNumMulti=," << triNumMulti 
+                << ",triNumMultiFail0=," << triNumMultiFail0 << ",triNumMultiFail1=," << triNumMultiFail1 << ",triNumMultiFail2=," << triNumMultiFail2 << std::endl;
 }
 
 void FeatureManager::removeOutlier(set<int> &outlierIndex)
