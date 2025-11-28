@@ -39,7 +39,9 @@ class FeatureTracker
 public:
     FeatureTracker();
     // map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1 = cv::Mat());
-    std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1 = cv::Mat());
+    // std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1 = cv::Mat());
+    std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  trackImageMultiThread(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1 = cv::Mat());
+    void trackImageMono(const double _cur_time, const int cid, map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& trackedResultMono, std::vector<double>& costTime, std::vector<int>& fNumLk);
     bool splitBlockGoodFeaturesToTrack(const cv::Mat& cur_img, const int num_curpts, std::vector<cv::Point2f>& new_pts, const int num_max, const int min_dist, cv::Mat& mask);
     // void setMask();
     void setMask(int cid);

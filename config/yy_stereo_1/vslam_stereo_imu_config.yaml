@@ -46,7 +46,9 @@ multiple_thread: 0
 #feature traker paprameters
 # max_cnt: 350            # max feature number in feature tracking
 # min_dist: 20            # min distance between two features 
-max_cnt: 150            # max feature number in feature tracking
+# max_cnt: 150            # max feature number in feature tracking
+# max_cnt: 120            # max feature number in feature tracking
+max_cnt: 100            # max feature number in feature tracking
 # min_dist: 30            # min distance between two features 
 # min_dist: 10            # min distance between two features 
 min_dist: 20            # min distance between two features 

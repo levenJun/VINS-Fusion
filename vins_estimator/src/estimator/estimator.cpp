@@ -172,9 +172,9 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
     TicToc featureTrackerTime;
 
     if(_img1.empty())
-        featureFrameMulti = featureTracker.trackImage(t, _img);
+        featureFrameMulti = featureTracker.trackImageMultiThread(t, _img);
     else
-        featureFrameMulti = featureTracker.trackImage(t, _img, _img1);
+        featureFrameMulti = featureTracker.trackImageMultiThread(t, _img, _img1);
     // featureFrame = featureFrameMulti[0];//暂时只取左目结果
     //printf("featureTracker time: %f\n", featureTrackerTime.toc());
     mMetricStatistic.timeTrackAll = mTicTocMetric.tocMs();
