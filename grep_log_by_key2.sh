@@ -24,7 +24,8 @@ do
 done
 
 #关键字提取统计文件
-KeyStrList=("processMeasurements, time=," "latest_time=,")
+# KeyStrList=("processMeasurements, time=," "latest_time=,")
+KeyStrList=("TrackStereo done, timestamp=," "TrackStereo MetricStatistic, timeStamp=,")
 
 
 if [ -f "$path" ]; then
