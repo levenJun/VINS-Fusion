@@ -14,7 +14,9 @@
 #include <iostream>
 #include "../factor/imu_factor.h"
 #include "../utility/utility.h"
+#ifndef ANDROID_ON_
 #include <ros/ros.h>
+#endif
 #include <map>
 #include "../estimator/feature_manager.h"
 

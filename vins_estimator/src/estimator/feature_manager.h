@@ -18,10 +18,10 @@ using namespace std;
 
 #include <eigen3/Eigen/Dense>
 using namespace Eigen;
-
+#ifndef ANDROID_ON_
 #include <ros/console.h>
 #include <ros/assert.h>
-
+#endif
 #include "parameters.h"
 #include "../utility/tic_toc.h"
 

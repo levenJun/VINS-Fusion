@@ -8,7 +8,9 @@
  *******************************************************/
 
 #pragma once
+#ifndef ANDROID_ON_
 #include <ros/assert.h>
+#endif
 #include <iostream>
 #include <eigen3/Eigen/Dense>
 

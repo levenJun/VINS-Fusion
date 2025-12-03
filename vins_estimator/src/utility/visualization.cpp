@@ -26,8 +26,8 @@ ros::Publisher pub_extrinsic;
 ros::Publisher pub_image_track;
 
 CameraPoseVisualization cameraposevisual(1, 0, 0, 1);
-static double sum_of_path = 0;
-static Vector3d last_path(0.0, 0.0, 0.0);
+// static double sum_of_path = 0;
+// static Vector3d last_path(0.0, 0.0, 0.0);
 
 size_t pub_counter = 0;
 
@@ -77,7 +77,7 @@ void pubTrackImage(const cv::Mat &imgTrack, const double t)
     pub_image_track.publish(imgTrackMsg);
 }
 
-
+/*
 void printStatistics(const Estimator &estimator, double t)
 {
     if (estimator.solver_flag != Estimator::SolverFlag::NON_LINEAR)
@@ -120,7 +120,7 @@ void printStatistics(const Estimator &estimator, double t)
     if (ESTIMATE_TD)
         ROS_INFO("td %f", estimator.td);
 }
-
+*/
 void pubOdometry(const Estimator &estimator, const std_msgs::Header &header)
 {
     if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)

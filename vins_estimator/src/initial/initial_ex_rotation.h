@@ -19,8 +19,9 @@ using namespace std;
 
 #include <eigen3/Eigen/Dense>
 using namespace Eigen;
+#ifndef ANDROID_ON_
 #include <ros/console.h>
-
+#endif
 /* This class help you to calibrate extrinsic rotation between imu and camera when your totally don't konw the extrinsic parameter */
 class InitialEXRotation
 {

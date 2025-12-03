@@ -82,6 +82,7 @@ int getGlobalFrameId(bool selfPlus){
     }
 };
 
+#ifndef ANDROID_ON_
 template <typename T>
 T readParam(ros::NodeHandle &n, std::string name)
 {
@@ -97,6 +98,7 @@ T readParam(ros::NodeHandle &n, std::string name)
     }
     return ans;
 }
+#endif
 
 void readParameters(std::string config_file)
 {
@@ -104,6 +106,7 @@ void readParameters(std::string config_file)
     if(fh == NULL){
         ROS_WARN("config_file dosen't exist; wrong config_file path");
         ROS_BREAK();
+        ;
         return;          
     }
     fclose(fh);
@@ -243,9 +246,10 @@ void readParameters(std::string config_file)
     TD = fsSettings["td"];
     ESTIMATE_TD = fsSettings["estimate_td"];
     if (ESTIMATE_TD)
-        ROS_INFO_STREAM("Unsynchronized sensors, online estimate time offset, initial td: " << TD);
+        // ROS_INFO_STREAM("Unsynchronized sensors, online estimate time offset, initial td: " << TD);
+        std::cout << "Unsynchronized sensors, online estimate time offset, initial td: " << TD << std::endl;
     else
-        ROS_INFO_STREAM("Synchronized sensors, fix time offset: " << TD);
+        std::cout << "Synchronized sensors, fix time offset: " << TD << std::endl;
 
 
     if(!USE_IMU)

@@ -8,13 +8,17 @@
  *******************************************************/
 
 #include "estimator.h"
+#ifndef ANDROID_ON_
 #include "../utility/visualization.h"
-
+#endif
 Estimator::Estimator(): f_manager{Rs}
 {
     ROS_INFO("init begins");
     initThreadFlag = false;
     clearState();
+#ifdef VIEWER_ON_
+    cv::namedWindow(SHOW_TRACK_NAME, cv::WINDOW_NORMAL);
+#endif
 }
 
 Estimator::~Estimator()
@@ -182,7 +186,13 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
     if (SHOW_TRACK)
     {
         cv::Mat imgTrack = featureTracker.getTrackImage();
+    #ifdef VIEWER_ON_
+        cv::imshow(SHOW_TRACK_NAME,imgTrack);
+        cv::waitKey(1.0);
+    #endif
+    #ifndef ANDROID_ON_
         pubTrackImage(imgTrack, t);
+    #endif
     }
     // return;//看看纯track的性能消耗
     //把上面追踪到本帧的特征信息打上时间戳,缓存到队列featureBuf.
@@ -223,7 +233,9 @@ void Estimator::inputIMU(double t, const Vector3d &linearAcceleration, const Vec
     {
         mPropagate.lock();
         fastPredictIMU(t, linearAcceleration, angularVelocity);//待 fix: 需要处理imu超前太多数据，会发生pose来回拉扯跳变.
+    #ifndef ANDROID_ON_
         pubLatestOdometry(latest_P, latest_Q, latest_V, t);
+    #endif
         mPropagate.unlock();
     }
 }
@@ -349,7 +361,7 @@ void Estimator::processMeasurements()
             prevTime = curTime;
             mMetricStatistic.timeImgAll = mTicTocMetric.tocMs();
             printStatistics(*this, 0);
-
+        #ifndef ANDROID_ON_
             std_msgs::Header header;
             header.frame_id = "world";
             header.stamp = ros::Time(feature.first);
@@ -360,6 +372,7 @@ void Estimator::processMeasurements()
             pubPointCloud(*this, header);
             pubKeyframe(*this);
             pubTF(*this, header);
+        #endif
             mProcess.unlock();
         }
 
@@ -482,7 +495,8 @@ void Estimator::processImage(const std::vector<map<int, vector<pair<int, Eigen::
             if (initial_ex_rotation.CalibrationExRotation(corres, pre_integrations[frame_count]->delta_q, calib_ric))//满帧后才会估旋转
             {
                 ROS_WARN("initial extrinsic rotation calib success");
-                ROS_WARN_STREAM("initial extrinsic rotation: " << endl << calib_ric);
+                // ROS_WARN_STREAM("initial extrinsic rotation: " << endl << calib_ric);
+                std::cout << "warn initial extrinsic rotation: " << endl << calib_ric << std::endl;
                 ric[0] = calib_ric;
                 RIC[0] = calib_ric;//这里直接把离线标定的外參都改啦? fix!
                 ESTIMATE_EXTRINSIC = 1;
@@ -1997,4 +2011,49 @@ void Estimator::updateLatestStates()
             << endl;
 
     mPropagate.unlock();
+}
+
+static double sum_of_path = 0;
+static Vector3d last_path(0.0, 0.0, 0.0);
+void Estimator::printStatistics(const Estimator &estimator, double t)
+{
+    if (estimator.solver_flag != Estimator::SolverFlag::NON_LINEAR)
+        return;
+    //printf("position: %f, %f, %f\r", estimator.Ps[WINDOW_SIZE].x(), estimator.Ps[WINDOW_SIZE].y(), estimator.Ps[WINDOW_SIZE].z());
+    std::cout << "ros debug " << "position: " << estimator.Ps[WINDOW_SIZE].transpose() << std::endl;
+    std::cout << "ros debug " << "orientation: " << estimator.Vs[WINDOW_SIZE].transpose() << std::endl;
+    if (ESTIMATE_EXTRINSIC)
+    {
+        cv::FileStorage fs(EX_CALIB_RESULT_PATH, cv::FileStorage::WRITE);
+        for (int i = 0; i < NUM_OF_CAM; i++)
+        {
+            //ROS_DEBUG("calibration result for camera %d", i);
+            std::cout << "ros debug " << "extirnsic tic: " << estimator.tic[i].transpose() << std::endl;
+            std::cout << "ros debug " << "extrinsic ric: " << Utility::R2ypr(estimator.ric[i]).transpose() << std::endl;
+
+            Eigen::Matrix4d eigen_T = Eigen::Matrix4d::Identity();
+            eigen_T.block<3, 3>(0, 0) = estimator.ric[i];
+            eigen_T.block<3, 1>(0, 3) = estimator.tic[i];
+            cv::Mat cv_T;
+            cv::eigen2cv(eigen_T, cv_T);
+            if(i == 0)
+                fs << "body_T_cam0" << cv_T ;
+            else
+                fs << "body_T_cam1" << cv_T ;
+        }
+        fs.release();
+    }
+
+    static double sum_of_time = 0;
+    static int sum_of_calculation = 0;
+    sum_of_time += t;
+    sum_of_calculation++;
+    std::cout << "ros debug " << ("vo solver costs: " + std::to_string(t) + " ms") << std::endl;
+    std::cout << "ros debug " << ("average of time " + std::to_string(sum_of_time / sum_of_calculation) + " ms") << std::endl;
+
+    sum_of_path += (estimator.Ps[WINDOW_SIZE] - last_path).norm();
+    last_path = estimator.Ps[WINDOW_SIZE];
+    std::cout << "ros debug " << ("sum of path " + std::to_string(sum_of_path)) << std::endl;
+    if (ESTIMATE_TD)
+        std::cout << "ros info " << ("td " + std::to_string(estimator.td)) << std::endl;
 }

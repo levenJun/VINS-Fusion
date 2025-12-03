@@ -9,7 +9,17 @@
 
 #pragma once
 
+#ifndef ANDROID_ON_
 #include <ros/ros.h>
+#else
+    #define ROS_WARN std::cout << std::endl << " ros warn: " << 
+    #define ROS_DEBUG std::cout << std::endl << " ros debug: " << 
+    #define ROS_INFO std::cout << std::endl << " ros info: " << 
+    #define ROS_BREAK() exit(-1)
+    #define ROS_ASSERT assert
+#endif
+#define SHOW_TRACK_NAME "track_img"
+
 #include <vector>
 #include <eigen3/Eigen/Dense>
 #include "../utility/utility.h"

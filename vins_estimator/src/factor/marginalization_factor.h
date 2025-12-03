@@ -8,9 +8,12 @@
  *******************************************************/
 
 #pragma once
-
+#ifndef ANDROID_ON_
 #include <ros/ros.h>
 #include <ros/console.h>
+#else
+#include "../estimator/parameters.h"
+#endif
 #include <cstdlib>
 #include <pthread.h>
 #include <ceres/ceres.h>

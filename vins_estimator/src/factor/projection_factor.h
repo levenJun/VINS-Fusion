@@ -8,8 +8,9 @@
  *******************************************************/
 
 #pragma once
-
+#ifndef ANDROID_ON_
 #include <ros/assert.h>
+#endif
 #include <ceres/ceres.h>
 #include <Eigen/Dense>
 #include "../utility/utility.h"

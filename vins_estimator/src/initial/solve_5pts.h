@@ -18,9 +18,9 @@ using namespace std;
 //#include <opencv2/core/eigen.hpp>
 #include <eigen3/Eigen/Dense>
 using namespace Eigen;
-
+#ifndef ANDROID_ON_
 #include <ros/console.h>
-
+#endif
 class MotionEstimator
 {
   public:

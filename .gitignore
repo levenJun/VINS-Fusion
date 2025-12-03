@@ -16,3 +16,5 @@ camera_camera_calib.yaml
 camera_chessboard_data.dat
 /log/
 /output/
+/*/build/
+/*/bins/

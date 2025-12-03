@@ -45,7 +45,7 @@ void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, co
 
 void pubTrackImage(const cv::Mat &imgTrack, const double t);
 
-void printStatistics(const Estimator &estimator, double t);
+// void printStatistics(const Estimator &estimator, double t);
 
 void pubOdometry(const Estimator &estimator, const std_msgs::Header &header);
 

@@ -35,7 +35,8 @@ void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
         b += tmp_A.transpose() * tmp_b;
     }
     delta_bg = A.ldlt().solve(b);
-    ROS_WARN_STREAM("gyroscope bias initial calibration " << delta_bg.transpose());
+    // ROS_WARN_STREAM("gyroscope bias initial calibration " << delta_bg.transpose());
+    std::cout << "warn gyroscope bias initial calibration " << delta_bg.transpose() << std::endl;
 
     for (int i = 0; i <= WINDOW_SIZE; i++)
         Bgs[i] += delta_bg;

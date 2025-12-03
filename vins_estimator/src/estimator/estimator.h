@@ -11,8 +11,10 @@
  
 #include <thread>
 #include <mutex>
+#ifndef ANDROID_ON_
 #include <std_msgs/Header.h>
 #include <std_msgs/Float32.h>
+#endif
 #include <ceres/ceres.h>
 #include <unordered_map>
 #include <queue>
@@ -183,4 +185,6 @@ class Estimator
 
     bool initFirstPoseFlag;
     bool initThreadFlag;
+    
+    void printStatistics(const Estimator &estimator, double t);
 };
