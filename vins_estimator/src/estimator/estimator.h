@@ -19,8 +19,8 @@
 #include <unordered_map>
 #include <queue>
 #include <opencv2/core/eigen.hpp>
-#include <eigen3/Eigen/Dense>
-#include <eigen3/Eigen/Geometry>
+#include <Eigen/Dense>
+#include <Eigen/Geometry>
 
 #include "parameters.h"
 #include "feature_manager.h"

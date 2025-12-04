@@ -17,7 +17,7 @@ using namespace std;
 
 #include <opencv2/opencv.hpp>
 
-#include <eigen3/Eigen/Dense>
+#include <Eigen/Dense>
 using namespace Eigen;
 #ifndef ANDROID_ON_
 #include <ros/console.h>

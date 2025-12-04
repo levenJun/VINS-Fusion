@@ -16,7 +16,7 @@
 #include <numeric>
 using namespace std;
 
-#include <eigen3/Eigen/Dense>
+#include <Eigen/Dense>
 using namespace Eigen;
 #ifndef ANDROID_ON_
 #include <ros/console.h>

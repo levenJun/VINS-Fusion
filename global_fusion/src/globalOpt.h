@@ -15,8 +15,8 @@
 #include <iostream>
 #include <mutex>
 #include <thread>
-#include <eigen3/Eigen/Dense>
-#include <eigen3/Eigen/Geometry>
+#include <Eigen/Dense>
+#include <Eigen/Geometry>
 #include <ceres/ceres.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>

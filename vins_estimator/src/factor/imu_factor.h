@@ -12,7 +12,7 @@
 #include <ros/assert.h>
 #endif
 #include <iostream>
-#include <eigen3/Eigen/Dense>
+#include <Eigen/Dense>
 
 #include "../utility/utility.h"
 #include "../estimator/parameters.h"

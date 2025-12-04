@@ -24,7 +24,7 @@
 #include <mutex>
 #include <queue>
 #include <thread>
-#include <eigen3/Eigen/Dense>
+#include <Eigen/Dense>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/eigen.hpp>
 #include "keyframe.h"

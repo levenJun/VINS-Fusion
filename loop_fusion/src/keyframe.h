@@ -12,7 +12,7 @@
 #pragma once
 
 #include <vector>
-#include <eigen3/Eigen/Dense>
+#include <Eigen/Dense>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/eigen.hpp>
 #include "camodocal/camera_models/CameraFactory.h"
