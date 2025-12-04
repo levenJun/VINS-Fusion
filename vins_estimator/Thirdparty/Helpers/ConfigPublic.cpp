@@ -9,7 +9,7 @@ std::pair<bool, std::string> ConfigPublic::gOutPutDirMatchTrack = {true, ""};// 
 void ConfigPublic::ConfigPublicStartuper::OnConfigPublicStartup(){
 
     //获取统一的启动时间
-    auto now = std::chrono::high_resolution_clock::now();
+    auto now = std::chrono::system_clock::now();
     auto nowTime = std::chrono::system_clock::to_time_t(now);
     std::tm *tmNow = std::localtime(&nowTime);
     std::ostringstream oss;
