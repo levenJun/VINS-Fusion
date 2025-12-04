@@ -83,7 +83,7 @@ if(${ANDROID_ABI} STREQUAL "arm64-v8a")
     # 目标 B: 生成可执行文件 (双目+IMU) - 仅限真机使用
     # -------------------------------------------------------
     # 确保 .cc 文件就在当前目录下
-    add_executable(VINS_run vslamNodeTest3NoRos.cpp)
+    add_executable(VINS_run ${CMAKE_CURRENT_SOURCE_DIR}/VINS-Fusion/vins_estimator/src/vslamNodeTest3NoRos.cpp)
 
     # 强制 4KB 对齐 (XR2 必需)
     target_link_options(VINS_run PRIVATE "-Wl,-z,max-page-size=4096")
