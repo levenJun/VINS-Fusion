@@ -11,6 +11,8 @@
 
 #include "feature_tracker.h"
 #include <opencv2/imgproc/types_c.h>
+#include <thread>
+#include <mutex>
 
 bool FeatureTracker::inBorder(const cv::Point2f &pt)
 {
@@ -178,15 +180,8 @@ bool FeatureTracker::splitBlockGoodFeaturesToTrack(const cv::Mat& cur_img, const
 };
 
 // map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1)
-std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1)
-{
-    TicToc mTicTocMetric;
-    TicToc mTicTocLKLeftOnce;
-    TicToc mTicTocLKLeftTwice;
-    TicToc mTicTocGFTTLeft;
-    TicToc mTicTocLKRightTwice;
-
-    TicToc t_r;
+// std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1)
+std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  FeatureTracker::trackImageMultiThread(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1){
     cur_time = _cur_time;
 
     //所有目,单独追踪,尝试补点,只是记录补点px，不正式补点
@@ -196,6 +191,7 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
     //开始计算速度之类的操作
     //cur到pre的转移操作
     //准备返回数据
+    TicToc mTicTocMetricTrackAll;
     for (int cid = 0; cid < NUM_CAM; cid++)
     {
         //所有目,单独追踪,尝试补点,只是记录补点px，不正式补点
@@ -212,6 +208,110 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
         }
         */
         vTrackInfoMono[cid].cur_pts.clear();
+    }
+    std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> trackedResultMulti;
+    trackedResultMulti.resize(NUM_CAM);    
+
+    std::vector<std::vector<double>> costTimeMulti;
+    std::vector<std::vector<int>> fNumLk;
+    costTimeMulti.resize(NUM_CAM);
+    fNumLk.resize(NUM_CAM);
+    //开启多线程orNot
+    if(true){
+        std::vector<std::thread> threads;
+        threads.reserve(NUM_CAM);
+        for (int cid = 0; cid < NUM_CAM; cid++)
+        {
+            costTimeMulti[cid].resize(5, 0.0);
+            fNumLk[cid].resize(2, 0);
+            threads.emplace_back(
+                &FeatureTracker::trackImageMono, 
+                this, 
+                cur_time, 
+                cid, 
+                std::ref(trackedResultMulti[cid]), 
+                std::ref(costTimeMulti[cid]), 
+                std::ref(fNumLk[cid])
+            );
+        }
+        for (auto& t : threads) t.join();
+    }else{
+        for (int cid = 0; cid < NUM_CAM; cid++)
+        {
+            costTimeMulti[cid].resize(5, 0.0);
+            fNumLk[cid].resize(2, 0);
+            trackImageMono(cur_time, cid, trackedResultMulti[cid], costTimeMulti[cid], fNumLk[cid]);
+        }
+    }
+
+
+    //统计汇总耗时:timeLKLeftOnce,timeLKLeftTwice,timeGFTTLeft,timeLKRightTwice,timeTrackAll
+    for (int cid = 0; cid < NUM_CAM; cid++)
+    {
+        mMetricStatistic.timeLKLeftOnce += costTimeMulti[cid][0];
+        mMetricStatistic.timeLKLeftTwice += costTimeMulti[cid][1];
+        mMetricStatistic.timeGFTTLeft += costTimeMulti[cid][2];
+        mMetricStatistic.timeLKRightTwice += costTimeMulti[cid][3];
+        // mMetricStatistic.timeTrackAll += costTimeMulti[cid][4];
+
+        if(cid == 0){
+            mMetricStatistic.fNumLkPreLeft = vTrackInfoMono[cid].cur_pts.size();
+            mMetricStatistic.fNumLkStereo = vTrackInfoMono[cid].cur_right_pts.size();
+            mMetricStatistic.fNumLkPreAll = 0;
+        }
+        mMetricStatistic.fNumLkPreAll += vTrackInfoMono[cid].cur_pts.size();
+    }    
+    mMetricStatistic.timeTrackAll = mTicTocMetricTrackAll.tocMs();
+    if(SHOW_TRACK){
+        cv::Mat rightImg = stereo_cam? vTrackInfoMono[1].cur_img : cv::Mat();
+        // drawTrack(cur_img, rightImg, ids, cur_pts, cur_right_pts, prevLeftPtsMap);
+        drawTrack(vTrackInfoMono[0].cur_img, rightImg, vTrackInfoMono[0].ids, vTrackInfoMono[0].cur_pts, vTrackInfoMono[0].cur_right_pts, vTrackInfoMono[0].prevLeftPtsMap);
+
+        if(NUM_CAM > 1){
+            for (int cid = 1; cid < NUM_CAM; cid++)
+            {
+                cv::Mat imTrackMono;
+                drawTrackMono(cid, vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].ids, vTrackInfoMono[cid].cur_pts, vTrackInfoMono[cid].prevLeftPtsMap, imTrackMono);
+                cv::hconcat(imTrack, imTrackMono, imTrack);
+            }
+        }
+    }
+
+    prev_time = cur_time;
+
+    return trackedResultMulti;
+};
+
+//costTime:总5个统计时间,按顺序是timeLKLeftOnce,timeLKLeftTwice,timeGFTTLeft,timeLKRightTwice,timeTrackAll
+//fNumLk:0-左目track点数,1-右目track点数
+void FeatureTracker::trackImageMono(const double _cur_time, const int cid, map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& trackedResultMono, std::vector<double>& costTime, std::vector<int>& fNumLk)
+{
+    TicToc mTicTocMetric;
+    TicToc mTicTocLKLeftOnce;
+    TicToc mTicTocLKLeftTwice;
+    TicToc mTicTocGFTTLeft;
+    TicToc mTicTocLKRightTwice;
+
+    TicToc t_r;
+    // cur_time = _cur_time;
+
+    // for (int cid = 0; cid < NUM_CAM; cid++)
+    for (int ldx = 0; ldx < 1; ldx++)
+    {
+        // //所有目,单独追踪,尝试补点,只是记录补点px，不正式补点
+        // vTrackInfoMono[cid].cur_img = cid == 0? _img : _img1;
+        // row = vTrackInfoMono[cid].cur_img.rows;
+        // col = vTrackInfoMono[cid].cur_img.cols;
+        /*    
+        cv::Mat rightImg = cid == 0? _img1 : cv::Mat();
+        {
+            cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0, cv::Size(8, 8));
+            clahe->apply(cur_img, cur_img);
+            if(!rightImg.empty())
+                clahe->apply(rightImg, rightImg);
+        }
+        */
+        // vTrackInfoMono[cid].cur_pts.clear();
 
         mTicTocLKLeftOnce.tic();
         mTicTocLKLeftTwice.tic();
@@ -238,7 +338,8 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
             else
                 cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].prev_img, vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].prev_pts, vTrackInfoMono[cid].cur_pts, status, err, cv::Size(21, 21), 3);
 
-            mMetricStatistic.timeLKLeftOnce += mTicTocLKLeftOnce.tocMs();
+            // mMetricStatistic.timeLKLeftOnce += mTicTocLKLeftOnce.tocMs();
+            costTime[0] = mTicTocLKLeftOnce.tocMs();
             // reverse check
             if(FLOW_BACK)
             {
@@ -257,7 +358,8 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
                         status[i] = 0;
                 }
             }
-            mMetricStatistic.timeLKLeftTwice += mTicTocLKLeftTwice.tocMs();
+            // mMetricStatistic.timeLKLeftTwice += mTicTocLKLeftTwice.tocMs();
+            costTime[1] = mTicTocLKLeftTwice.tocMs();
             
             for (int i = 0; i < int(vTrackInfoMono[cid].cur_pts.size()); i++)
                 if (status[i] && !inBorder(vTrackInfoMono[cid].cur_pts[i]))
@@ -273,11 +375,12 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
         for (auto &n : vTrackInfoMono[cid].track_cnt)
             n++;
 
-        if(cid == 0){
-            mMetricStatistic.fNumLkPreLeft = vTrackInfoMono[cid].cur_pts.size();
-            mMetricStatistic.fNumLkPreAll = 0;
-        }
-        mMetricStatistic.fNumLkPreAll += vTrackInfoMono[cid].cur_pts.size();
+        // if(cid == 0){
+        //     mMetricStatistic.fNumLkPreLeft = vTrackInfoMono[cid].cur_pts.size();
+        //     mMetricStatistic.fNumLkPreAll = 0;
+        // }
+        // mMetricStatistic.fNumLkPreAll += vTrackInfoMono[cid].cur_pts.size();
+        fNumLk[0] = vTrackInfoMono[cid].cur_pts.size();
 
         mTicTocGFTTLeft.tic();
         if (1)
@@ -321,10 +424,13 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
 
             //printf("feature cnt after add %d\n", (int)ids.size());
         }
-        mMetricStatistic.timeGFTTLeft += mTicTocGFTTLeft.tocMs();
+        // mMetricStatistic.timeGFTTLeft += mTicTocGFTTLeft.tocMs();
+        costTime[2] = mTicTocGFTTLeft.tocMs();
     }
 
-    for (int cid = 0; cid < NUM_CAM; cid++){
+    // for (int cid = 0; cid < NUM_CAM; cid++)
+    for (int ldx = 0; ldx < 1; ldx++)
+    {
         if(cid != 0) continue;//就左目直接补点,其它目延迟补点
         for (auto &p : vTrackInfoMono[cid].n_pts)
         {
@@ -336,7 +442,9 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
 
     mTicTocLKRightTwice.tic();
     //所有目,尝试双目匹配
-    for (int cid = 0; cid < NUM_CAM; cid++){
+    // for (int cid = 0; cid < NUM_CAM; cid++)
+    for (int ldx = 0; ldx < 1; ldx++)
+    {
         if(!stereo_cam) continue;
         if(cid != 0) continue;      //目前只对左目作双目匹配
         cv::Mat rightImg = cid == 0? vTrackInfoMono[1].cur_img : vTrackInfoMono[0].cur_img;
@@ -388,11 +496,15 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
             // prev_un_right_pts_map = cur_un_right_pts_map;
         }
     }
-    mMetricStatistic.timeLKRightTwice = mTicTocLKRightTwice.tocMs();
+    // mMetricStatistic.timeLKRightTwice = mTicTocLKRightTwice.tocMs();
+    costTime[3] = mTicTocLKRightTwice.tocMs();
 
-    mMetricStatistic.fNumLkStereo = vTrackInfoMono[0].cur_right_pts.size();
+    // mMetricStatistic.fNumLkStereo = vTrackInfoMono[0].cur_right_pts.size();
+    fNumLk[1] = vTrackInfoMono[cid].cur_right_pts.size();
     //开始汇总补点
-    for (int cid = 0; cid < NUM_CAM; cid++){
+    // for (int cid = 0; cid < NUM_CAM; cid++)
+    for (int ldx = 0; ldx < 1; ldx++)
+    {
         if(cid == 0) continue;//就左目直接补点,其它目延迟补点
 
         //fix:新提点+双目匹配补点
@@ -406,7 +518,9 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
 
     //开始去畸变
     //开始计算速度之类的操作    
-    for (int cid = 0; cid < NUM_CAM; cid++){
+    // for (int cid = 0; cid < NUM_CAM; cid++)
+    for (int ldx = 0; ldx < 1; ldx++)
+    {
         vTrackInfoMono[cid].cur_un_pts = undistortedPts(vTrackInfoMono[cid].cur_pts, m_camera[cid]);
         vTrackInfoMono[cid].pts_velocity = ptsVelocity(vTrackInfoMono[cid].ids, vTrackInfoMono[cid].cur_un_pts, vTrackInfoMono[cid].cur_un_pts_map, vTrackInfoMono[cid].prev_un_pts_map);
         if(cid != 0) continue;//目前只有左目会双目匹配
@@ -414,8 +528,10 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
         vTrackInfoMono[cid].right_pts_velocity = ptsVelocity(vTrackInfoMono[cid].ids_right, vTrackInfoMono[cid].cur_un_right_pts, vTrackInfoMono[cid].cur_un_right_pts_map, vTrackInfoMono[cid].prev_un_right_pts_map);
     }
 
-    mMetricStatistic.timeTrackAll = mTicTocMetric.tocMs();
+    // mMetricStatistic.timeTrackAll = mTicTocMetric.tocMs();
+    costTime[4] = mTicTocMetric.tocMs();
 
+    /*
     if(SHOW_TRACK){
         cv::Mat rightImg = stereo_cam? vTrackInfoMono[1].cur_img : cv::Mat();
         // drawTrack(cur_img, rightImg, ids, cur_pts, cur_right_pts, prevLeftPtsMap);
@@ -430,14 +546,16 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
             }
         }
     }
+    */
 
     //cur到pre的转移操作
     //准备返回数据
-    std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> trackedResult;
-    trackedResult.resize(NUM_CAM);
+    // std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> trackedResultMulti;
+    // trackedResultMulti.resize(NUM_CAM);
 
-    prev_time = cur_time;
-    for (int cid = 0; cid < NUM_CAM; cid++)
+    // prev_time = cur_time;
+    // for (int cid = 0; cid < NUM_CAM; cid++)
+    for (int ldx = 0; ldx < 1; ldx++)
     {
         vTrackInfoMono[cid].prev_img = vTrackInfoMono[cid].cur_img;
         vTrackInfoMono[cid].prev_pts = vTrackInfoMono[cid].cur_pts;
@@ -453,7 +571,7 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
         //当前帧特征追踪匹配结果[fid][cid](特征信息)
         //featureFrame[id1][i].first是本帧的追踪到的特征所属相机cid:有0和1的双目id
         //featureFrame[id1][i].second是本帧的追踪到的特征 像素px等信息        
-        map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& featureFrame = trackedResult[cid];
+        map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& featureFrame = trackedResultMono;
         featureFrame.clear();
         for (size_t i = 0; i < vTrackInfoMono[cid].ids.size(); i++)
         {
@@ -502,7 +620,7 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTra
 
     }
     //printf("feature track whole time %f\n", t_r.toc());
-    return trackedResult;
+    // return trackedResult;
 }
 
 void FeatureTracker::rejectWithF(int cid)
