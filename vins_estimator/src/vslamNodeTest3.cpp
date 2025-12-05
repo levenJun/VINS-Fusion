@@ -34,6 +34,33 @@
 #include "Stereo-Inertial3/DataReader.hpp"
 #include "HelperDataSaver.hpp"
 
+#include <sched.h>
+#include <unistd.h>
+#include <sys/syscall.h>
+// ==================== 绑定核心的辅助函数 ====================
+// 输入: core_ids (例如 {7} 代表超大核，{4,5,6} 代表大核)
+void BindToCores(const std::vector<int>& core_ids) {
+    cpu_set_t mask;
+    CPU_ZERO(&mask); // 清空掩码
+
+    // 将指定的核心加入掩码
+    for (int id : core_ids) {
+        CPU_SET(id, &mask);
+    }
+
+    // 获取当前线程 ID (用于打印日志)
+    pid_t tid = syscall(__NR_gettid);
+
+    // 设置亲和性 (0 代表当前线程)
+    if (sched_setaffinity(0, sizeof(mask), &mask) < 0) {
+        std::cerr << "[Error] Failed to bind Thread " << tid << " to cores!" << std::endl;
+    } else {
+        std::cout << "[Success] Thread " << tid << " bound to cores: ";
+        for(int id : core_ids) std::cout << id << " ";
+        std::cout << "(XR2 Prime/Big cores are recommended)" << std::endl;
+    }
+}
+
 // #include <System.h>
 
 ros::Publisher pub_camRawImg0, pub_camRawImg1;
@@ -477,6 +504,7 @@ void cam_switch_callback(const std_msgs::BoolConstPtr &switch_msg)
 //5)单开一个线程来执行数据顺序输入并处理
 int main(int argc, char **argv)
 {
+    BindToCores({4,5});
     ros::init(argc, argv, "vins_estimator");
     ros::NodeHandle n("~");
     ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug);
@@ -508,7 +536,7 @@ int main(int argc, char **argv)
     }
     cout << "startIndex = " << startIndex << ",endIndex = " << endIndex << endl;
     
-    // cv::setNumThreads(1);
+    cv::setNumThreads(1);
 
     // mpHeadDataReader = std::make_shared<DATA_READER::HeadDataReader>(dataDir + "/head", 4, 1, startIndex, endIndex);
     mpHeadDataReader = std::make_shared<DataReader>(dataDir + "/");

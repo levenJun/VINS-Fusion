@@ -49,7 +49,8 @@ Clone the repository and catkin_make:
     cd ~/catkin_ws/src
     git clone https://github.com/HKUST-Aerial-Robotics/VINS-Fusion.git
     cd ../
-    catkin_make -DPYTHON_EXECUTABLE=/usr/bin/python3
+    catkin_make -DPYTHON_EXECUTABLE=/usr/bin/python3    
+    catkin_make -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCATKIN_WHITELIST_PACKAGES="camera_models;global_fusion;loop_fusion;vins" #只构建指定包
     source ~/catkin_ws/devel/setup.bash
 ```
 

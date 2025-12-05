@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(vins)
-add_definitions(-DANDROID_ON_) #表示开启安卓编译,会取消ros
-add_definitions(-DVIEWER_ON_) #表示开启显示相关功能
+add_definitions(-DANDROID_ON_) #表示开启安卓编译,会取消ros 
+add_definitions(-DVIEWER_ON_) #表示开启显示相关功能 
 
 
 set(CMAKE_BUILD_TYPE "Release")
