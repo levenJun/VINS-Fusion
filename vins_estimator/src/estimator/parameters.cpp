@@ -208,7 +208,7 @@ void readParameters(std::string config_file)
     for (int cid = 0; cid < NUM_CAM; cid++)
     {
         cv::Mat maskX;
-        if(!MyHelpers::HelperOpencv::GenFishEysMask(ROW, COL, 10, maskX)){
+        if(!ORB_SLAM3::HelperOpencv::GenFishEysMask(ROW, COL, 10, maskX)){
             assert(false);
         }
         ImgMask.push_back(maskX);

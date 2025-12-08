@@ -58,7 +58,7 @@ void BindToCores(const std::vector<int>& core_ids) {
 int startIndex = 0;
 int endIndex = 90000;
 std::shared_ptr<DataReader> mpHeadDataReader = nullptr;
-std::shared_ptr<MyHelpers::HelperDataSaver> mHelperDataSaver = nullptr;
+std::shared_ptr<ORB_SLAM3::HelperDataSaver> mHelperDataSaver = nullptr;
 Estimator estimator;
 
 std::mutex m_buf;
@@ -76,7 +76,7 @@ void sync_process()
     //     cerr << "ERROR: Failed to load images or IMU " << endl;
     //     return ;
     // }
-    mHelperDataSaver = std::shared_ptr<MyHelpers::HelperDataSaver>(new MyHelpers::HelperDataSaver());
+    mHelperDataSaver = std::shared_ptr<ORB_SLAM3::HelperDataSaver>(new ORB_SLAM3::HelperDataSaver());
     mHelperDataSaver->setRootDirectory("./output/p1/");
     mHelperDataSaver->startSaving();
     mHelperDataSaver->saveMaskImage();

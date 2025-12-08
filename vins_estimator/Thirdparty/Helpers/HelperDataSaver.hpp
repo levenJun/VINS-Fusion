@@ -16,7 +16,7 @@
 #include "HelperTime.h"
 #include "HelperOpencv.h"
 // namespace fs = std::filesystem;
-namespace MyHelpers{
+namespace ORB_SLAM3{
 class HelperDataSaver {
 private:
     std::string root_dir_;          // 根目录（包含时间子目录）
@@ -170,7 +170,7 @@ public:
         if (!is_saving_) return;        
         int row = 480, col = 640, padding = 10;
         cv::Mat maskX;
-        if(!MyHelpers::HelperOpencv::GenFishEysMask(row, col, padding, maskX)){
+        if(!HelperOpencv::GenFishEysMask(row, col, padding, maskX)){
             return;
         }
         // = cv::Mat(row, col, CV_8UC1, cv::Scalar(0));

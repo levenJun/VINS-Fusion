@@ -18,7 +18,7 @@
 #include <stdio.h>
 #include <sstream>
 using namespace std;
-namespace MyHelpers{
+namespace ORB_SLAM3{
 
 class HelperFile
 {

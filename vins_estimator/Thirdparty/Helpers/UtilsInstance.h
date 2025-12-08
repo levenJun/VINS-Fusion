@@ -5,7 +5,7 @@
 
 using namespace std;
 
-namespace MyHelpers{
+namespace ORB_SLAM3{
 class UtilsInstance
 {
 private:

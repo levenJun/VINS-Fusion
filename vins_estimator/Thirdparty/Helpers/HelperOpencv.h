@@ -7,7 +7,7 @@
 #include <unordered_map>  
 #include <opencv2/features2d.hpp> 
 #include <mutex>
-namespace MyHelpers{
+namespace ORB_SLAM3{
 
 class HelperOpencv
 {

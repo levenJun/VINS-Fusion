@@ -4,7 +4,7 @@
 #include <string>
 #include <unistd.h>
 #include <sstream>
-namespace MyHelpers{
+namespace ORB_SLAM3{
 
 class HelperSystem
 {

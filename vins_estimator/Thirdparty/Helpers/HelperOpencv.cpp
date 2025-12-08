@@ -1,7 +1,7 @@
 #include "HelperOpencv.h"
 #include <random>
 
-namespace MyHelpers{
+namespace ORB_SLAM3{
 
 
 bool HelperOpencv::DrawKeypoints(const cv::Mat& img, const std::vector<cv::KeyPoint>& kpts, cv::Mat& output, const int oriSize){

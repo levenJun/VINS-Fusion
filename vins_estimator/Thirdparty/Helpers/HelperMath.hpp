@@ -3,7 +3,7 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
-namespace MyHelpers{
+namespace ORB_SLAM3{
 
 class HelperMath
 {

@@ -4,7 +4,7 @@
 #include <iomanip>
 #include <sstream>
 
-namespace MyHelpers{
+namespace ORB_SLAM3{
 
 class HelperTime
 {
