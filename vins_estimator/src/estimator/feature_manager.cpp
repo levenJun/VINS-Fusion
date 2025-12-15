@@ -51,9 +51,10 @@ int FeatureManager::getFeatureCount()
 //本帧最新特征刷新地图点列表feature（老点累加观测，新点创建新MP）
 //用追踪强弱和平移视差来判断是否要KF:MARGIN_OLD
 // bool FeatureManager::addFeatureCheckParallax(int cur_frame_id, int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td)
-bool FeatureManager::addFeatureCheckParallax(int cur_frame_id, int frame_count, const std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> &image, double td)
+// bool FeatureManager::addFeatureCheckParallax(int cur_frame_id, int frame_count, const std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> &image, double td)
+bool FeatureManager::addFeatureCheckParallax(int cur_frame_id, int frame_count, const FeatureTracker::TrackInfoComplex &image, double td)
 {
-    ROS_DEBUG("input feature: %d", (int)image.size());
+    ROS_DEBUG("input feature: %d", (int)image.mOfs[0].size());
     ROS_DEBUG("num of feature: %d", getFeatureCount());
     double parallax_sum = 0;
     int parallax_num = 0;
@@ -67,8 +68,8 @@ bool FeatureManager::addFeatureCheckParallax(int cur_frame_id, int frame_count, 
     //以特征MP为核心构建所有帧的观测.
     //feature是滑窗地图所有MP点.  feature[i]是单个特征, feature[i].feature_per_frame 是FeaturePerFrame列表，记录所有帧对本特征的观测信息.
     // int curCamId = 0;   //主相机id
-    for (int curCamId = 0; curCamId < image.size(); curCamId++)
-    for (auto &id_pts : image[curCamId])
+    for (int curCamId = 0; curCamId < image.mOfs.size(); curCamId++)
+    for (auto &id_pts : image.mOfs[curCamId])
     // for (auto &id_pts : image)
     {
         // FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
@@ -107,6 +108,53 @@ bool FeatureManager::addFeatureCheckParallax(int cur_frame_id, int frame_count, 
                 long_track_num++;
         }
     }
+
+    //处理追踪的orb特征
+    //先按orb统计
+    std::map<ORB_SLAM3::MapPoint*, std::vector<FeaturePerFrameOrb>> mapCurObs;
+    for (int curCamId = 0; curCamId < NUM_CAM; curCamId++)
+    {
+        const FeatureTracker::TrackInfoMonoOrb& curTrackOrb = image.mOrbs[curCamId];
+        const int orbNum = curTrackOrb.cur_pts.size();
+        if(orbNum <= 0) continue;
+        assert(orbNum == curTrackOrb.cur_un_pts.size());
+        assert(orbNum == curTrackOrb.track_cnt.size());
+        assert(orbNum == curTrackOrb.orbMPs.size());
+        
+        for (int pid = 0, psize = curTrackOrb.cur_pts.size(); pid < psize; pid++)
+        {
+            ORB_SLAM3::MapPoint* curMPptr = curTrackOrb.orbMPs[pid];
+            if(!curMPptr){
+                std::cout << "addFeatureCheckParallax warn x1, curMPptr is null." << std::endl;
+                continue;
+            }
+            FeaturePerFrameOrb f_per_fra(curCamId, curTrackOrb.cur_pts[pid], curTrackOrb.cur_un_pts[pid]);
+            auto it = mapCurObs.find(curMPptr);
+            if(it == mapCurObs.end()){
+                std::vector<FeaturePerFrameOrb> vobs;
+                vobs.emplace_back(f_per_fra);
+                mapCurObs[curMPptr] = vobs;
+                continue;
+            }
+            it->second.emplace_back(f_per_fra);//是从小cam到大cam依次叠加,
+        }
+    }
+    //再进行刷新
+    int addMPorbNum = 0;
+    for (auto& itCurObs : mapCurObs)
+    {
+        ORB_SLAM3::MapPoint* curMPptr = itCurObs.first;
+        auto itSearch = featureOrb.find(curMPptr);
+        if(itSearch == featureOrb.end()){            
+            // featureOrb[curMPptr] = FeaturePerIdOrb(curMPptr, frame_count, cur_frame_id);
+            featureOrb.insert({curMPptr, FeaturePerIdOrb(curMPptr, frame_count, cur_frame_id)});
+            itSearch = featureOrb.find(curMPptr);
+            addMPorbNum++;
+        }
+        int shiftIdx = frame_count - itSearch->second.start_frame;
+        itSearch->second.obs.insert({shiftIdx, itCurObs.second});
+    }
+    std::cout << "addFeatureCheckParallax, cur_frame_id=," << cur_frame_id << ",featureOrb.size=," << featureOrb.size() << ",addMPorbNum=," << addMPorbNum << std::endl;
 
     //if (frame_count < 2 || last_track_num < 20)
     //if (frame_count < 2 || last_track_num < 20 || new_feature_num > 0.5 * last_track_num)
@@ -863,7 +911,17 @@ void FeatureManager::removeOutlier(set<int> &outlierIndex)
         }
     }
 }
-
+void FeatureManager::removeOutlier(set<ORB_SLAM3::MapPoint*> &outlierIndex)
+{
+    std::set<ORB_SLAM3::MapPoint*>::iterator itSet;
+    for (auto& it:outlierIndex)
+    {
+        auto itSearch = featureOrb.find(it);
+        if(itSearch != featureOrb.end()){
+            itSearch = featureOrb.erase(itSearch);
+        }
+    }
+}
 //切换参考帧和深度值
 //fix:注意起始0帧情况下,需要删除起始帧观测，并且需要转移参考帧和深度! 左右目都考虑
 // void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3d marg_P, Eigen::Matrix3d new_R, Eigen::Vector3d new_P)
@@ -912,6 +970,33 @@ void FeatureManager::removeBackShiftDepth(const std::vector<Eigen::Matrix3d>& ma
         }
         */
     }
+    // std::cout << "SlideWin 1, removeBackShiftDepth,";
+    for (auto& it : featureOrb)
+    {
+        //起始非0帧,只是修改参考帧id. fix,注意右目参考帧情况
+        //不用管orb的bad和fuse情况，由前面步骤去处理.
+        if(it.second.start_frame > 0){
+            it.second.start_frame--;//只需要--起始序号
+        }else{
+            it.second.start_frame--;//也需要--起始序号
+            //然后判断滑窗范围内是否还有有效观测
+            const int startIdx = it.second.start_frame + it.second.obs.begin()->first;
+            if(startIdx < 0){//有观测需要剔除
+                for (auto itObs = it.second.obs.begin(); itObs != it.second.obs.end();)
+                {
+                    const int curIdx = it.second.start_frame + itObs->first;
+                    if(curIdx < 0){
+                        itObs = it.second.obs.erase(itObs);
+                        continue;
+                    }
+                    itObs++;
+                    break;//因为是有序set,所以直接停止循环
+                }
+            }
+        }
+        // it.second.PrintObsSimple();
+    }
+    // std::cout << std::endl;
 }
 
 //针对初始化阶段,切换地图点MP的参考帧和深度
@@ -931,6 +1016,32 @@ void FeatureManager::removeBack()
             if (it->feature_per_frame.size() == 0)
                 feature.erase(it);
         }
+    }
+    // std::cout << "SlideWin 2, removeBack,";
+    for (auto& it : featureOrb)
+    {
+        //起始非0帧,只是修改参考帧id. fix,注意右目参考帧情况
+        //不用管orb的bad和fuse情况，由前面步骤去处理.
+        if(it.second.start_frame > 0){
+            it.second.start_frame--;//只需要--起始序号
+        }else{
+            it.second.start_frame--;//也需要--起始序号
+            //然后判断滑窗范围内是否还有有效观测
+            const int startIdx = it.second.start_frame + it.second.obs.begin()->first;
+            if(startIdx < 0){//有观测需要剔除
+                for (auto itObs = it.second.obs.begin(); itObs != it.second.obs.end();)
+                {
+                    const int curIdx = it.second.start_frame + itObs->first;
+                    if(curIdx < 0){
+                        itObs = it.second.obs.erase(itObs);
+                        continue;
+                    }
+                    itObs++;
+                    break;//因为是有序set,所以直接停止循环
+                }
+            }
+        }
+        // it.second.PrintObsSimple();
     }
 }
 //算是ok无需fix了?
@@ -962,6 +1073,67 @@ void FeatureManager::removeFront(int frame_count)
                 }
             }
         }
+    }
+    // std::cout << "SlideWin 3, removeFront,";
+    for (auto& it : featureOrb)
+    {
+        //不用管orb的bad和fuse情况，由前面步骤去处理.
+        if(it.second.start_frame == frame_count){//因为是保留最新帧，所以最新帧的观测保留，而最新帧序号会--, 只需要参考帧序号--即可，深度值不变.
+            it.second.start_frame--;
+        }else{//起始帧早于或者等于次新帧.
+            const int endIdx = it.second.start_frame + it.second.obs.rbegin()->first;
+            if(endIdx < frame_count - 1)//起始帧早于次新帧，并且结束帧也早于次新帧,那么不用管
+                continue;
+            //起始帧早于次新帧，并且结束帧包含次新帧,那么直接把次新帧观测删除,还要把最新帧的shiftIdx修改
+            if(it.second.start_frame == frame_count - 1){//如果起始帧就是次新帧，不用管start_frame，按计划删除次新帧观测就行
+
+            }
+            //反向迭代:确定次新帧和最新帧观测,全部直接从obs中删除,然后把最新帧观测的shiftIdx--后重新加入观测
+            std::vector<int> eraseObs;//次新帧和大于次新帧的观测            
+            std::vector<std::pair<int, std::vector<FeaturePerFrameOrb>>> keepObs;//大于次新帧的观测
+            for (auto itObs = it.second.obs.rbegin(); itObs != it.second.obs.rend(); ++itObs){
+                const int curIdx = it.second.start_frame + itObs->first;
+                if(curIdx > frame_count - 1){//大于次新帧
+                    eraseObs.push_back(itObs->first);
+                    keepObs.push_back(*itObs);
+                }else if(curIdx == frame_count - 1){//刚好次新帧
+                    eraseObs.push_back(itObs->first);
+                    break;
+                }else{
+                    std::cout << "removeFront err 1, curIdx=," << curIdx << ",frame_count=," << frame_count << std::endl;
+                    // assert(false);
+                    break;//最新帧有观测，但是次新帧没有观测,正常情况
+                }
+            }
+            //确定次新帧和最新帧观测,全部直接从obs中删除
+            std::cout << "removeFront, eraseObs.size=," << eraseObs.size() << ",keepObs.size=," << keepObs.size() << std::endl;
+            if(eraseObs.empty()){
+                std::cout << "removeFront err 2, eraseObs is empty,frame_count=," << frame_count << std::endl;
+            }
+            std::pair<int, std::vector<FeaturePerFrameOrb>> target_key;
+            for (int oid = 0; oid < eraseObs.size(); oid++)
+            {
+                target_key.first = eraseObs[oid];
+                auto itEease = it.second.obs.find(target_key);
+                if(itEease == it.second.obs.end()){
+                    std::cout << "removeFront err 3, itEease is end, target_key.first=," << target_key.first << std::endl;
+                    continue;
+                }
+                it.second.obs.erase(itEease);
+            }
+            //确定次新帧和最新帧观测,最新帧观测的shiftIdx--后重新加入观测
+            for (int oid = 0; oid < keepObs.size(); oid++)
+            {
+                auto& curKeepObs = keepObs[oid];
+                curKeepObs.first--;
+                if(it.second.obs.find(curKeepObs) != it.second.obs.end()){
+                    std::cout << "removeFront err 4, shiftIdx=," << curKeepObs.first << std::endl;
+                }
+                it.second.obs.insert(curKeepObs);
+            }
+        }
+
+        // it.second.PrintObsSimple();
     }
 }
 

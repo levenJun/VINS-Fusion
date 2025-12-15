@@ -86,6 +86,7 @@ class Estimator
     Sophus::SE3d transPoseM4toSophus(Eigen::Matrix4d &T);
     void predictPtsInNextFrame();
     void outliersRejection(set<int> &removeIndex);
+    void outliersRejection(set<ORB_SLAM3::MapPoint*> &removeIndexOrb);
     double reprojectionError(Matrix3d &Ri, Vector3d &Pi, Matrix3d &rici, Vector3d &tici,
                                      Matrix3d &Rj, Vector3d &Pj, Matrix3d &ricj, Vector3d &ticj, 
                                      double depth, Vector3d &uvi, Vector3d &uvj);

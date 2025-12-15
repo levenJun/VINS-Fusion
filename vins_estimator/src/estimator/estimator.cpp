@@ -527,7 +527,7 @@ void Estimator::processImage(const FeatureTracker::TrackInfoComplex &image, cons
     ROS_DEBUG("Adding feature points %lu", image.mOfs[0].size());
     assert(image.mOfs.size() == NUM_CAM);
     TicToc mTicTocMetric;
-    if (f_manager.addFeatureCheckParallax(cur_frame_id, frame_count, image.mOfs, td))
+    if (f_manager.addFeatureCheckParallax(cur_frame_id, frame_count, image, td))
     {
         marginalization_flag = MARGIN_OLD;
         //printf("keyframe\n");
@@ -698,6 +698,15 @@ void Estimator::processImage(const FeatureTracker::TrackInfoComplex &image, cons
         }
         f_manager.triangulate(frame_count, Ps, Rs, tic, ric, true);//在滑窗优化前，直接提前三角化了. fix, maybe在滑窗优化后再三角化更好?
         slideWindow();
+        set<ORB_SLAM3::MapPoint*> removeIndexOrb;//剔除无效的orb点
+        outliersRejection(removeIndexOrb);
+        if(!removeIndexOrb.empty()){
+            f_manager.removeOutlier(removeIndexOrb);//从地图容器中剔除
+            if (! MULTIPLE_THREAD)//在串行模式下,才会从光流追踪参考数据中剔除
+            {
+                std::vector<int> trackInlierOrb = featureTracker.removeOutliers(removeIndexOrb);//返回多目内点
+            }
+        }
         f_manager.removeFailures();//剔除深度为负的地图MP点
         // prepare output of VINS
         key_poses.clear();
@@ -2043,6 +2052,43 @@ void Estimator::outliersRejection(set<int> &removeIndex)
 
     }
 }
+
+void Estimator::outliersRejection(set<ORB_SLAM3::MapPoint*> &removeIndexOrb){
+    //删除bad点
+    //删除观测总数为0的点
+    //删除重投影误差大的点
+    int remove1 = 0,remove2 = 0,remove3 = 0,remove4 = 0;
+    removeIndexOrb.clear();
+    for (auto &it_per_id : f_manager.featureOrb){
+        if(!it_per_id.first){
+            removeIndexOrb.insert(it_per_id.first);
+            remove1++;
+            continue;
+        }
+        if(it_per_id.first->isBad(false)){
+            removeIndexOrb.insert(it_per_id.first);
+            remove2++;
+            continue;
+        }
+        if(it_per_id.second.obs.empty()){
+            removeIndexOrb.insert(it_per_id.first);
+            remove3++;
+            continue;
+        }
+        const int endIdx = it_per_id.second.start_frame + it_per_id.second.obs.rbegin()->first;
+        if(endIdx < 0){
+            removeIndexOrb.insert(it_per_id.first);
+            remove4++;
+            continue;
+        }
+        if(endIdx > WINDOW_SIZE){
+            std::cout << "outliersRejection err 1, endIdx=," << endIdx << std::endl;
+        }
+
+    }
+    std::cout << "Estimator removeIndexOrb.size=," << removeIndexOrb.size() << ",remove1=," << remove1 << ",remove2=," 
+                << remove2 << ",remove3=," << remove3 << ",remove4=," << remove4 << std::endl;
+};
 
 void Estimator::fastPredictIMU(double t, Eigen::Vector3d linear_acceleration, Eigen::Vector3d angular_velocity)
 {
