@@ -24,6 +24,13 @@ using namespace Eigen;
 #endif
 #include "parameters.h"
 #include "../utility/tic_toc.h"
+#include <set>
+#include <map>
+#include "featureTracker/feature_tracker.h"
+namespace ORB_SLAM3
+{
+class MapPoint;
+};
 
 class FeaturePerFrame
 {
@@ -126,6 +133,69 @@ class FeatureFuseInfo{
     const int feature_id2;
 };
 
+//orb相关地图点
+class FeaturePerFrameOrb{
+  public:
+
+    int main_cam = -1;        //标记本帧以哪个相机为准
+    Vector3d point;           //单帧多目观测，用数组组织
+    Vector2d uv;
+
+    // FeaturePerFrameOrb(int _main_cam, const Eigen::Matrix<double, 7, 1> &_point)
+    // 需要check一下是否是这样的
+    FeaturePerFrameOrb(int _main_cam, const cv::Point2f& _point, const cv::Point2f& _un_point)
+    {
+        assert(0 <= _main_cam && _main_cam < NUM_CAM);
+        main_cam = _main_cam;
+        point.x() = _un_point.x;
+        point.y() = _un_point.y;
+        point.z() = 1.0;
+        uv.x() = _point.x;
+        uv.y() = _point.y;
+    }
+};
+
+// 自定义比较器：仅比较pair.first
+struct CompareByFrameIdx {
+    bool operator()(const std::pair<int, std::vector<FeaturePerFrameOrb>>& a, const std::pair<int, std::vector<FeaturePerFrameOrb>>& b) const {
+        return a.first < b.first;
+    }
+};
+class FeaturePerIdOrb
+{
+  public:
+    const ORB_SLAM3::MapPoint* orbMPptr = nullptr;
+    int start_frame;
+    std::set<std::pair<int, std::vector<FeaturePerFrameOrb>>, CompareByFrameIdx> obs;//按照偏离帧idx自动排序
+    // vector<FeaturePerFrame> feature_per_frame;//fix,1,默认最新帧一定观测到了地图MP点.
+    //                                           //fix,2,默认从起始帧往后都是连续观测到地图MP点.
+    // int used_num;
+    // double estimated_depth;//这里默认左目2d点对应的深度
+    //                        //fix, 多目情况下要增加其它目深度.
+    // int solve_flag; // 0 haven't solve yet; 1 solve succ; 2 solve fail;
+    //                 // 滑窗优化后求解出的深度是负数,地图点MP的solve_flag会被置为2
+    bool track_keep;        //标记是否被最新帧追踪到
+    int flag_opti_frame_id; //标记正参与哪一帧的优化
+    int create_frame_id;    //标记是哪个帧创建的
+    FeaturePerIdOrb(ORB_SLAM3::MapPoint* _orbMPptr, int _start_frame, int _create_frame_id = -1)
+        : orbMPptr(_orbMPptr), start_frame(_start_frame),
+          // used_num(0), estimated_depth(-1.0), solve_flag(0), 
+          track_keep(true), flag_opti_frame_id(-1), create_frame_id(_create_frame_id)
+    {
+    }
+
+    void PrintObsSimple(){
+      if(obs.empty()) return;
+      std::cout << "FeaturePerIdOrb obsSimple, mnId=," << orbMPptr << ",start_frame=," << start_frame << ",start=," << obs.begin()->first << ",end=," << obs.rbegin()->first << ",obs=,";
+      for (auto itObs = obs.begin(); itObs != obs.end();)
+      {
+        std::cout << itObs->first << ",";
+        itObs++;
+      }
+      // std::cout << std::endl;
+    }
+};
+
 class FeatureManager
 {
   public:
@@ -156,6 +226,7 @@ class FeatureManager
     void removeOutlier(set<int> &outlierIndex);
     list<FeaturePerId> feature;                                       //这个list结构需要优化,不然查找时太耗时了!
     list<std::pair<FeatureFuseInfo,FeaturePerId>> featureTryFuse;     //临时融合点
+    std::map<ORB_SLAM3::MapPoint*, FeaturePerIdOrb> featureOrb;
     int last_track_num;
     double last_average_parallax;
     int new_feature_num;

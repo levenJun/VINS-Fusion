@@ -11,6 +11,7 @@
 #ifndef ANDROID_ON_
 #include "../utility/visualization.h"
 #endif
+#include "MapPoint.h"
 Estimator::Estimator(): f_manager{Rs}
 {
     ROS_INFO("init begins");
@@ -164,24 +165,82 @@ void Estimator::changeSensorType(int use_imu, int use_stereo)
 
 void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
 {
+    // const Sophus::SE3d diffPose; 
+    FeatureTracker::TrackInfoMonoOrb trackOrbPre[NUM_CAM];
+    inputImage(t, _img, _img1, trackOrbPre, nullptr);
+};
+
+//trackOrbPre:上帧的orb点
+//diffPose:orb和vins的对齐pose
+void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1, const FeatureTracker::TrackInfoMonoOrb (&trackOrbPre)[NUM_CAM], const std::shared_ptr<Sophus::SE3d> diffPose)
+{
     inputImageCnt++;
     cur_frame_id = getGlobalFrameId(true);    
     std::cout << "----------imageCnt:" << inputImageCnt << ",cur_frame_id=," << cur_frame_id << "----------------" << std::endl;
     std::cout << "----------img_time:" << t << std::endl;
-    std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> featureFrameMulti;//多目追踪结果
+    std::pair<double, std::shared_ptr<FeatureTracker::TrackInfoComplex>> featureFrameMulti;//多目追踪结果
+    featureFrameMulti.first = t;
+    featureFrameMulti.second = std::shared_ptr<FeatureTracker::TrackInfoComplex>(new FeatureTracker::TrackInfoComplex());
+    featureFrameMulti.second->diffPose = diffPose;
+    // std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> featureFrameMulti;//多目追踪结果
     //featureFrame[id1][i].first是本帧的追踪到的特征所属相机cid:有0和1的双目id
     //featureFrame[id1][i].second是本帧的追踪到的特征 像素px等信息    
     map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> featureFrame;
     TicToc mTicTocMetric;
     TicToc featureTrackerTime;
-
+    
+    // const Sophus::SE3d diffPose; 
+    // FeatureTracker::TrackInfoMonoOrb trackOrbPre[NUM_CAM];
     if(_img1.empty())
-        featureFrameMulti = featureTracker.trackImageMultiThread(t, _img);
+        featureFrameMulti.second->mOfs = featureTracker.trackImageMultiThread(t, _img, cv::Mat(), trackOrbPre);
     else
-        featureFrameMulti = featureTracker.trackImageMultiThread(t, _img, _img1);
+        featureFrameMulti.second->mOfs = featureTracker.trackImageMultiThread(t, _img, _img1, trackOrbPre);
     // featureFrame = featureFrameMulti[0];//暂时只取左目结果
     //printf("featureTracker time: %f\n", featureTrackerTime.toc());
+    // featureFrameMulti.second->mOrbs = featureTracker.vTrackInfoMonoOrb;
+    for (int cid = 0; cid < NUM_CAM; cid++)
+        featureFrameMulti.second->mOrbs[cid] = featureTracker.vTrackInfoMonoOrb[cid];
+    
     mMetricStatistic.timeTrackAll = mTicTocMetric.tocMs();
+
+    //计算最新帧track的orb点的平均baErr
+    if(true && diffPose)//debug
+    {
+
+        std::pair<int, double> baErrByFrameLatest = {0,0.0};
+        const int curFrame = frame_count - 1;        
+        for (int cid = 0; cid < NUM_CAM; cid++){
+            Eigen::Matrix4d posei;
+            getPoseInWorldFrameOfCamera(curFrame, posei, cid);
+            Sophus::SE3d poseSi = transPoseM4toSophus(posei);            
+            const FeatureTracker::TrackInfoMonoOrb& curTrackInfoMonoOrb = trackOrbPre[cid];
+            for (int pid = 0; pid < curTrackInfoMonoOrb.orbMPs.size(); pid++)
+            {
+                ORB_SLAM3::MapPoint* pOrbMP = curTrackInfoMonoOrb.orbMPs[pid];
+                if(!pOrbMP || pOrbMP->isBad(false)){
+                    continue;
+                }
+                const Eigen::Vector3d& orbPoseOri = pOrbMP->GetWorldPos().cast<double>();
+                const Eigen::Vector3d& orbPose = (*diffPose) * orbPoseOri;
+
+
+                Eigen::Vector3d pts_i(curTrackInfoMonoOrb.cur_un_pts[pid].x, curTrackInfoMonoOrb.cur_un_pts[pid].y, 1.0);
+
+                Vector3d pts_i_cam = poseSi.inverse() * orbPose;
+                Vector2d baErrZ1 = (pts_i_cam / pts_i_cam.z()).head<2>() - pts_i.head<2>();
+
+                double rx = baErrZ1.x();
+                double ry = baErrZ1.y();
+                double err = sqrt(rx * rx + ry * ry);
+                baErrByFrameLatest.first++;
+                baErrByFrameLatest.second += err;
+            }            
+        }
+        
+        std::cout << "baErrByFrameLatest pOrbMP.id=," << curFrame << ",num=," << baErrByFrameLatest.first << ",ave_err=," << (baErrByFrameLatest.second/baErrByFrameLatest.first)*FOCAL_LENGTH << std::endl;
+
+    }
+
 
     if (SHOW_TRACK)
     {
@@ -204,7 +263,8 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
         {
             mBuf.lock();
             // featureBuf.push(make_pair(t, featureFrame));
-            featureBuf.push(make_pair(t, featureFrameMulti));
+            // featureBuf.push(make_pair(t, featureFrameMulti));
+            featureBuf.push(featureFrameMulti);
             mBuf.unlock();
         }
     }
@@ -212,7 +272,8 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
     {
         mBuf.lock();
         // featureBuf.push(make_pair(t, featureFrame));
-        featureBuf.push(make_pair(t, featureFrameMulti));
+        // featureBuf.push(make_pair(t, featureFrameMulti));
+        featureBuf.push(featureFrameMulti);
         mBuf.unlock();
         TicToc processTime;
         processMeasurements();
@@ -243,16 +304,21 @@ void Estimator::inputIMU(double t, const Vector3d &linearAcceleration, const Vec
 //默认就只是添加左目,单目特征
 void Estimator::inputFeature(double t, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &featureFrame)
 {
-    std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> featureFrameMulti;
-    featureFrameMulti.emplace_back(featureFrame);
+    // std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> featureFrameMulti;
+    // featureFrameMulti.emplace_back(featureFrame);
+    std::pair<double, std::shared_ptr<FeatureTracker::TrackInfoComplex>> featureFrameMulti;//多目追踪结果
+    featureFrameMulti.first = t;
+    featureFrameMulti.second = std::shared_ptr<FeatureTracker::TrackInfoComplex>(new FeatureTracker::TrackInfoComplex());
+    featureFrameMulti.second->mOfs.emplace_back(featureFrame);
     for (int cid = 1; cid < NUM_CAM; cid++)
     {
-        featureFrameMulti.emplace_back(map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>());
+        featureFrameMulti.second->mOfs.emplace_back(map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>());
     }
     
     mBuf.lock();
     // featureBuf.push(make_pair(t, featureFrame));
-    featureBuf.push(make_pair(t, featureFrameMulti));
+    // featureBuf.push(make_pair(t, featureFrameMulti));
+    featureBuf.push(featureFrameMulti);
     mBuf.unlock();
 
     if(!MULTIPLE_THREAD)
@@ -310,7 +376,8 @@ void Estimator::processMeasurements()
     {
         //printf("process measurments\n");
         // pair<double, map<int, vector<pair<int, Eigen::Matrix<double, 7, 1> > > > > feature;
-        pair<double, std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1> > > > > > feature;
+        // pair<double, std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1> > > > > > feature;
+        std::pair<double, std::shared_ptr<FeatureTracker::TrackInfoComplex>> feature;
         vector<pair<double, Eigen::Vector3d>> accVector, gyrVector;
         if(!featureBuf.empty())
         {
@@ -357,7 +424,7 @@ void Estimator::processMeasurements()
             mMetricStatistic.timeImuAll = mTicTocMetric.tocMs();
             mProcess.lock();
             mTicTocMetric.tic();
-            processImage(feature.second, feature.first);
+            processImage(*feature.second, feature.first);
             prevTime = curTime;
             mMetricStatistic.timeImgAll = mTicTocMetric.tocMs();
             printStatistics(*this, 0);
@@ -453,13 +520,14 @@ void Estimator::processIMU(double t, double dt, const Vector3d &linear_accelerat
 }
 
 // void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, const double header)
-void Estimator::processImage(const std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> &image, const double header)
+// void Estimator::processImage(const std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> &image, const double header)
+void Estimator::processImage(const FeatureTracker::TrackInfoComplex &image, const double header)
 {
     ROS_DEBUG("new image coming ------------------------------------------");
-    ROS_DEBUG("Adding feature points %lu", image[0].size());
-    assert(image.size() == NUM_CAM);
+    ROS_DEBUG("Adding feature points %lu", image.mOfs[0].size());
+    assert(image.mOfs.size() == NUM_CAM);
     TicToc mTicTocMetric;
-    if (f_manager.addFeatureCheckParallax(cur_frame_id, frame_count, image, td))
+    if (f_manager.addFeatureCheckParallax(cur_frame_id, frame_count, image.mOfs, td))
     {
         marginalization_flag = MARGIN_OLD;
         //printf("keyframe\n");
@@ -476,7 +544,7 @@ void Estimator::processImage(const std::vector<map<int, vector<pair<int, Eigen::
     Headers[frame_count] = header;
 
     // ImageFrame imageframe(image, header);
-    ImageFrame imageframe(image[0], header);                   //fix:这里只用到单目追踪结果,且默认是左目?实际可能是多目，且存在纯右目? 
+    ImageFrame imageframe(image.mOfs[0], header);                   //fix:这里只用到单目追踪结果,且默认是左目?实际可能是多目，且存在纯右目? 
                                                             //这里就把原始的左目追踪结果给之,不会影响流程? 需要关注!!
     imageframe.pre_integration = tmp_pre_integration;
     all_image_frame.insert(make_pair(header, imageframe));
@@ -1777,12 +1845,29 @@ void Estimator::getPoseInWorldFrame(Eigen::Matrix4d &T)
     T.block<3, 1>(0, 3) = Ps[frame_count];
 }
 
+void Estimator::getPoseInWorldFrameOfCamera(Eigen::Matrix4d &T, int cid){
+    T = Eigen::Matrix4d::Identity();
+    T.block<3, 3>(0, 0) = Rs[frame_count] * ric[cid];
+    T.block<3, 1>(0, 3) = Rs[frame_count] * tic[cid] + Ps[frame_count];
+};
+
+void Estimator::getPoseInWorldFrameOfCamera(int index, Eigen::Matrix4d &T, int cid){
+    T = Eigen::Matrix4d::Identity();
+    T.block<3, 3>(0, 0) = Rs[index] * ric[cid];
+    T.block<3, 1>(0, 3) = Rs[index] * tic[cid] + Ps[index];
+};
+
 void Estimator::getPoseInWorldFrame(int index, Eigen::Matrix4d &T)
 {
     T = Eigen::Matrix4d::Identity();
     T.block<3, 3>(0, 0) = Rs[index];
     T.block<3, 1>(0, 3) = Ps[index];
 }
+
+Sophus::SE3d Estimator::transPoseM4toSophus(Eigen::Matrix4d &T){
+    Eigen::Quaterniond poseQ = Eigen::Quaterniond(T.block<3,3>(0,0));
+    return Sophus::SE3d(poseQ,  T.block<3,1>(0,3));
+};
 
 void Estimator::predictPtsInNextFrame()
 {

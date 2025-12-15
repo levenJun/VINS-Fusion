@@ -53,9 +53,11 @@ class Estimator
     //默认就只是添加左目,单目特征
     void inputFeature(double t, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &featureFrame);
     void inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1 = cv::Mat());
+    void inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1, const FeatureTracker::TrackInfoMonoOrb (&trackOrbPre)[NUM_CAM], const std::shared_ptr<Sophus::SE3d> diffPose);
     void processIMU(double t, double dt, const Vector3d &linear_acceleration, const Vector3d &angular_velocity);
     // void processImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, const double header);
-    void processImage(const std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> &image, const double header);
+    // void processImage(const std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> &image, const double header);
+    void processImage(const FeatureTracker::TrackInfoComplex &image, const double header);
     void processMeasurements();
     void changeSensorType(int use_imu, int use_stereo);
 
@@ -78,7 +80,10 @@ class Estimator
     bool getIMUInterval(double t0, double t1, vector<pair<double, Eigen::Vector3d>> &accVector, 
                                               vector<pair<double, Eigen::Vector3d>> &gyrVector);
     void getPoseInWorldFrame(Eigen::Matrix4d &T);
+    void getPoseInWorldFrameOfCamera(Eigen::Matrix4d &T, int cid = 0);
+    void getPoseInWorldFrameOfCamera(int index, Eigen::Matrix4d &T, int cid = 0);
     void getPoseInWorldFrame(int index, Eigen::Matrix4d &T);
+    Sophus::SE3d transPoseM4toSophus(Eigen::Matrix4d &T);
     void predictPtsInNextFrame();
     void outliersRejection(set<int> &removeIndex);
     double reprojectionError(Matrix3d &Ri, Vector3d &Pi, Matrix3d &rici, Vector3d &tici,
@@ -107,7 +112,7 @@ class Estimator
     queue<pair<double, Eigen::Vector3d>> accBuf;
     queue<pair<double, Eigen::Vector3d>> gyrBuf;
     // queue<pair<double, map<int, vector<pair<int, Eigen::Matrix<double, 7, 1> > > > > > featureBuf;
-    queue<pair<double, std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1> > > > > > > featureBuf;
+    queue<pair<double, std::shared_ptr<FeatureTracker::TrackInfoComplex>> > featureBuf;
     double prevTime, curTime;
     bool openExEstimation;
 

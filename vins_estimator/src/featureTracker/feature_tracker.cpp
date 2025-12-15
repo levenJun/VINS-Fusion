@@ -13,6 +13,7 @@
 #include <opencv2/imgproc/types_c.h>
 #include <thread>
 #include <mutex>
+// #include "MapPoint.h"
 
 bool FeatureTracker::inBorder(const cv::Point2f &pt)
 {
@@ -47,6 +48,36 @@ void reduceVector(vector<int> &v, vector<uchar> status)
             v[j++] = v[i];
     v.resize(j);
 }
+
+void reduceVector(vector<ORB_SLAM3::MapPoint*> &v, vector<uchar> status)
+{
+    int j = 0;
+    for (int i = 0; i < int(v.size()); i++)
+        if (status[i])
+            v[j++] = v[i];
+    v.resize(j);
+}
+void reduceVector(vector<cv::Point2f> &v, const vector<uchar>& status, const int si, const int sj){
+    assert(si >= 0);
+    assert(sj >= si && sj < status.size());
+    assert(v.size() == (sj - si + 1));//必须准确描述清楚起止idx
+    int j = 0;
+    for (int i = 0; i < int(v.size()); i++)
+        if(status[i + si])
+            v[j++] = v[i];
+    v.resize(j);
+};
+
+void reduceVector(vector<int> &v, const vector<uchar>& status, const int si, const int sj){
+    assert(si >= 0);
+    assert(sj >= si && sj < status.size());
+    assert(v.size() == (sj - si + 1));//必须准确描述清楚起止idx
+    int j = 0;
+    for (int i = 0; i < int(v.size()); i++)
+        if(status[i + si])
+            v[j++] = v[i];
+    v.resize(j);
+};
 
 FeatureTracker::FeatureTracker()
 {
@@ -181,7 +212,9 @@ bool FeatureTracker::splitBlockGoodFeaturesToTrack(const cv::Mat& cur_img, const
 
 // map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1)
 // std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1)
-std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  FeatureTracker::trackImageMultiThread(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1){
+// std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  FeatureTracker::trackImageMultiThread(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1){
+std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  FeatureTracker::trackImageMultiThread(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1, 
+                                                                                                    const TrackInfoMonoOrb (&trackOrbPre)[NUM_CAM]){
     cur_time = _cur_time;
 
     //所有目,单独追踪,尝试补点,只是记录补点px，不正式补点
@@ -208,10 +241,13 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  FeatureTr
         }
         */
         vTrackInfoMono[cid].cur_pts.clear();
+        
+        vTrackInfoMonoOrb[cid].Clear();//清空当前帧track结果.准备填充
     }
     std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> trackedResultMulti;
     trackedResultMulti.resize(NUM_CAM);    
-
+    std::vector<map<ORB_SLAM3::MapPoint*, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> trackedResultMultiOrb;
+    trackedResultMultiOrb.resize(NUM_CAM);    
     std::vector<std::vector<double>> costTimeMulti;
     std::vector<std::vector<int>> fNumLk;
     costTimeMulti.resize(NUM_CAM);
@@ -229,7 +265,9 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  FeatureTr
                 this, 
                 cur_time, 
                 cid, 
+                std::ref(trackOrbPre[cid]),
                 std::ref(trackedResultMulti[cid]), 
+                std::ref(trackedResultMultiOrb[cid]), 
                 std::ref(costTimeMulti[cid]), 
                 std::ref(fNumLk[cid])
             );
@@ -240,7 +278,7 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  FeatureTr
         {
             costTimeMulti[cid].resize(5, 0.0);
             fNumLk[cid].resize(2, 0);
-            trackImageMono(cur_time, cid, trackedResultMulti[cid], costTimeMulti[cid], fNumLk[cid]);
+            trackImageMono(cur_time, cid, trackOrbPre[cid], trackedResultMulti[cid], trackedResultMultiOrb[cid], costTimeMulti[cid], fNumLk[cid]);
         }
     }
 
@@ -266,12 +304,13 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  FeatureTr
         cv::Mat rightImg = stereo_cam? vTrackInfoMono[1].cur_img : cv::Mat();
         // drawTrack(cur_img, rightImg, ids, cur_pts, cur_right_pts, prevLeftPtsMap);
         drawTrack(vTrackInfoMono[0].cur_img, rightImg, vTrackInfoMono[0].ids, vTrackInfoMono[0].cur_pts, vTrackInfoMono[0].cur_right_pts, vTrackInfoMono[0].prevLeftPtsMap);
-
+        drawTrackMonoOrb(0, imTrack);
         if(NUM_CAM > 1){
             for (int cid = 1; cid < NUM_CAM; cid++)
             {
                 cv::Mat imTrackMono;
                 drawTrackMono(cid, vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].ids, vTrackInfoMono[cid].cur_pts, vTrackInfoMono[cid].prevLeftPtsMap, imTrackMono);
+                drawTrackMonoOrb(cid, imTrackMono);
                 cv::hconcat(imTrack, imTrackMono, imTrack);
             }
         }
@@ -284,7 +323,10 @@ std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  FeatureTr
 
 //costTime:总5个统计时间,按顺序是timeLKLeftOnce,timeLKLeftTwice,timeGFTTLeft,timeLKRightTwice,timeTrackAll
 //fNumLk:0-左目track点数,1-右目track点数
-void FeatureTracker::trackImageMono(const double _cur_time, const int cid, map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& trackedResultMono, std::vector<double>& costTime, std::vector<int>& fNumLk)
+// void FeatureTracker::trackImageMono(const double _cur_time, const int cid, map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& trackedResultMono, std::vector<double>& costTime, std::vector<int>& fNumLk)
+void FeatureTracker::trackImageMono(const double _cur_time, const int cid, const TrackInfoMonoOrb& trackOrbPre, 
+                                    map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& trackedResultMono, map<ORB_SLAM3::MapPoint*, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& trackedResultMonoOrb, 
+                                    std::vector<double>& costTime, std::vector<int>& fNumLk)
 {
     TicToc mTicTocMetric;
     TicToc mTicTocLKLeftOnce;
@@ -318,25 +360,45 @@ void FeatureTracker::trackImageMono(const double _cur_time, const int cid, map<i
         if (vTrackInfoMono[cid].prev_pts.size() > 0)
         {
             TicToc t_o;
+            //光流点和orb点一起track
+            vector<cv::Point2f> prev_pts_fuse = trackOrbPre.cur_pts;//重新汇总组装pre点和cur点
+            vector<cv::Point2f> cur_pts_fuse = trackOrbPre.cur_pts;
+            const int preNumOrb = trackOrbPre.cur_pts.size();
+            const int preNumTrack = vTrackInfoMono[cid].prev_pts.size();
+            const int preNumFuse = preNumOrb + preNumTrack;
+            prev_pts_fuse.insert(prev_pts_fuse.end(), vTrackInfoMono[cid].prev_pts.begin(), vTrackInfoMono[cid].prev_pts.end());
+            assert(preNumFuse == prev_pts_fuse.size());
             vector<uchar> status;
             vector<float> err;
             if(hasPrediction[cid])
             {
-                vTrackInfoMono[cid].cur_pts = vTrackInfoMono[cid].predict_pts;
-                cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].prev_img, vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].prev_pts, vTrackInfoMono[cid].cur_pts, status, err, cv::Size(21, 21), 1, 
+                // vTrackInfoMono[cid].cur_pts = vTrackInfoMono[cid].predict_pts;
+                // cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].prev_img, vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].prev_pts, vTrackInfoMono[cid].cur_pts, status, err, cv::Size(21, 21), 1, 
+                // cv::TermCriteria(cv::TermCriteria::COUNT+cv::TermCriteria::EPS, 30, 0.01), cv::OPTFLOW_USE_INITIAL_FLOW);
+                cur_pts_fuse.insert(cur_pts_fuse.end(), vTrackInfoMono[cid].predict_pts.begin(), vTrackInfoMono[cid].predict_pts.end());
+                cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].prev_img, vTrackInfoMono[cid].cur_img, prev_pts_fuse, cur_pts_fuse, status, err, cv::Size(21, 21), 1, 
                 cv::TermCriteria(cv::TermCriteria::COUNT+cv::TermCriteria::EPS, 30, 0.01), cv::OPTFLOW_USE_INITIAL_FLOW);
-                
+                assert(status.size() == preNumFuse);
+                assert(err.size() == preNumFuse);
                 int succ_num = 0;
-                for (size_t i = 0; i < status.size(); i++)
+                for (size_t i = preNumOrb; i < status.size(); i++)
                 {
                     if (status[i])
                         succ_num++;
                 }
                 if (succ_num < 10)
-                cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].prev_img, vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].prev_pts, vTrackInfoMono[cid].cur_pts, status, err, cv::Size(21, 21), 3);
+                // cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].prev_img, vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].prev_pts, vTrackInfoMono[cid].cur_pts, status, err, cv::Size(21, 21), 3);
+                cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].prev_img, vTrackInfoMono[cid].cur_img, prev_pts_fuse, cur_pts_fuse, status, err, cv::Size(21, 21), 3);
             }
             else
-                cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].prev_img, vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].prev_pts, vTrackInfoMono[cid].cur_pts, status, err, cv::Size(21, 21), 3);
+            {
+                // cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].prev_img, vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].prev_pts, vTrackInfoMono[cid].cur_pts, status, err, cv::Size(21, 21), 3);
+                //cur_pts_fuse无需填充,直接开搞
+                cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].prev_img, vTrackInfoMono[cid].cur_img, prev_pts_fuse, cur_pts_fuse, status, err, cv::Size(21, 21), 3);
+                assert(cur_pts_fuse.size() == preNumFuse);
+                assert(status.size() == preNumFuse);
+                assert(err.size() == preNumFuse);
+            }
 
             // mMetricStatistic.timeLKLeftOnce += mTicTocLKLeftOnce.tocMs();
             costTime[0] = mTicTocLKLeftOnce.tocMs();
@@ -344,13 +406,19 @@ void FeatureTracker::trackImageMono(const double _cur_time, const int cid, map<i
             if(FLOW_BACK)
             {
                 vector<uchar> reverse_status;
-                vector<cv::Point2f> reverse_pts = vTrackInfoMono[cid].prev_pts;
-                cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].prev_img, vTrackInfoMono[cid].cur_pts, reverse_pts, reverse_status, err, cv::Size(21, 21), 1, 
+                // vector<cv::Point2f> reverse_pts = vTrackInfoMono[cid].prev_pts;
+                // cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].prev_img, vTrackInfoMono[cid].cur_pts, reverse_pts, reverse_status, err, cv::Size(21, 21), 1, 
+                // cv::TermCriteria(cv::TermCriteria::COUNT+cv::TermCriteria::EPS, 30, 0.01), cv::OPTFLOW_USE_INITIAL_FLOW);
+                vector<cv::Point2f> reverse_pts = prev_pts_fuse;
+                cv::calcOpticalFlowPyrLK(vTrackInfoMono[cid].cur_img, vTrackInfoMono[cid].prev_img, cur_pts_fuse, reverse_pts, reverse_status, err, cv::Size(21, 21), 1, 
                 cv::TermCriteria(cv::TermCriteria::COUNT+cv::TermCriteria::EPS, 30, 0.01), cv::OPTFLOW_USE_INITIAL_FLOW);
                 //cv::calcOpticalFlowPyrLK(cur_img, prev_img, cur_pts, reverse_pts, reverse_status, err, cv::Size(21, 21), 3); 
+                assert(reverse_status.size() == preNumFuse);
+                assert(err.size() == preNumFuse);
                 for(size_t i = 0; i < status.size(); i++)
                 {
-                    if(status[i] && reverse_status[i] && distance(vTrackInfoMono[cid].prev_pts[i], reverse_pts[i]) <= 0.5)
+                    // if(status[i] && reverse_status[i] && distance(vTrackInfoMono[cid].prev_pts[i], reverse_pts[i]) <= 0.5)
+                    if(status[i] && reverse_status[i] && distance(prev_pts_fuse[i], reverse_pts[i]) <= 0.5)
                     {
                         status[i] = 1;
                     }
@@ -361,6 +429,45 @@ void FeatureTracker::trackImageMono(const double _cur_time, const int cid, map<i
             // mMetricStatistic.timeLKLeftTwice += mTicTocLKLeftTwice.tocMs();
             costTime[1] = mTicTocLKLeftTwice.tocMs();
             
+            //先操作orb点
+            if(preNumOrb > 0){
+                const int startIdx = 0;
+                vector<uchar> statusCheck;
+                statusCheck.assign(status.begin() + startIdx, status.begin() + startIdx + preNumOrb);
+                assert(statusCheck.size() == preNumOrb);
+                vTrackInfoMonoOrb[cid].cur_pts.assign(cur_pts_fuse.begin() + startIdx, cur_pts_fuse.begin() + startIdx + preNumOrb);
+                vTrackInfoMonoOrb[cid].track_cnt = trackOrbPre.track_cnt;
+                vTrackInfoMonoOrb[cid].orbMPs = trackOrbPre.orbMPs;
+                for (int i = 0; i < preNumOrb; i++)
+                {
+                    if (statusCheck[i] && !inBorder(vTrackInfoMonoOrb[cid].cur_pts[i]))
+                        statusCheck[i] = 0;
+                    if(statusCheck[i] && ImgMask[cid].at<uchar>(vTrackInfoMonoOrb[cid].cur_pts[i]) == 0)
+                        statusCheck[i] = 0;
+                }
+
+                reduceVector(vTrackInfoMonoOrb[cid].cur_pts, statusCheck);
+                reduceVector(vTrackInfoMonoOrb[cid].track_cnt, statusCheck);
+                reduceVector(vTrackInfoMonoOrb[cid].orbMPs, statusCheck);
+                for (auto &n : vTrackInfoMonoOrb[cid].track_cnt)
+                    n++;
+            }
+            //再操作track点,默认认为track点必不空,后续再check track可能为空情况
+            if(preNumOrb > 0){
+                const int startIdx = preNumOrb;
+                vector<uchar> statusCheck;
+                statusCheck.assign(status.begin() + startIdx, status.begin() + startIdx + preNumTrack);
+                status = statusCheck;
+                vTrackInfoMono[cid].cur_pts.assign(cur_pts_fuse.begin() + startIdx, cur_pts_fuse.begin() + startIdx + preNumTrack);
+            }else{
+                // status = status;
+                vTrackInfoMono[cid].cur_pts = cur_pts_fuse;
+            }
+            assert(status.size() == preNumTrack);
+            assert(vTrackInfoMono[cid].prev_pts.size() == preNumTrack);
+            assert(vTrackInfoMono[cid].cur_pts.size() == preNumTrack);
+            assert(vTrackInfoMono[cid].ids.size() == preNumTrack);
+            assert(vTrackInfoMono[cid].track_cnt.size() == preNumTrack);
             for (int i = 0; i < int(vTrackInfoMono[cid].cur_pts.size()); i++)
                 if (status[i] && !inBorder(vTrackInfoMono[cid].cur_pts[i]))
                     status[i] = 0;
@@ -521,6 +628,7 @@ void FeatureTracker::trackImageMono(const double _cur_time, const int cid, map<i
     // for (int cid = 0; cid < NUM_CAM; cid++)
     for (int ldx = 0; ldx < 1; ldx++)
     {
+        vTrackInfoMonoOrb[cid].cur_un_pts = undistortedPts(vTrackInfoMonoOrb[cid].cur_pts, m_camera[cid]);
         vTrackInfoMono[cid].cur_un_pts = undistortedPts(vTrackInfoMono[cid].cur_pts, m_camera[cid]);
         vTrackInfoMono[cid].pts_velocity = ptsVelocity(vTrackInfoMono[cid].ids, vTrackInfoMono[cid].cur_un_pts, vTrackInfoMono[cid].cur_un_pts_map, vTrackInfoMono[cid].prev_un_pts_map);
         if(cid != 0) continue;//目前只有左目会双目匹配
@@ -858,6 +966,23 @@ void FeatureTracker::drawTrackMono(const int cid, const cv::Mat &imLeft,
     //cv::resize(imCur2, imCur2Compress, cv::Size(cols, rows / 2));
 }
 
+void FeatureTracker::drawTrackMonoOrb(const int cid,  cv::Mat &imOut){
+    const vector<cv::Point2f>& curPts = vTrackInfoMonoOrb[cid].cur_pts;
+    int font = cv::FONT_HERSHEY_SIMPLEX;
+    double font_scale = 0.5;
+    int thickness = 1;    
+    for (size_t j = 0; j < curPts.size(); j++)
+    {
+        double len = std::min(1.0, 1.0 * vTrackInfoMonoOrb[cid].track_cnt[j] / 20);
+        cv::circle(imOut, curPts[j], 2, cv::Scalar(255 * (1 - len), 255, 255 * len), 2);//curLeftPts:左目追踪超过20帧的涂红，不到20帧的越多越接近红，越少越接近蓝
+
+        // std::string text = std::to_string(vTrackInfoMonoOrb[cid].orbMPs[j]? vTrackInfoMonoOrb[cid].orbMPs[j]->mnId:-1);
+        // cv::Point2f textPos(curPts[j].x + 5, curPts[j].y);
+        // cv::Size text_size = cv::getTextSize(text, font, font_scale, thickness, nullptr);
+        // putText(imOut, text, textPos, font, font_scale, cv::Scalar(0,255,255), thickness);
+    }
+};
+
 void FeatureTracker::setPrediction(int cid, map<int, Eigen::Vector3d> &predictPts)
 {
     // hasPrediction = true;
@@ -909,8 +1034,58 @@ std::vector<int> FeatureTracker::removeOutliers(set<int> &removePtsIds)
     return inliers;
 }
 
+std::vector<int> FeatureTracker::removeOutliers(set<ORB_SLAM3::MapPoint*> &removePtsIds)
+{
+    std::vector<int> inliers;
+    inliers.resize(NUM_CAM);
+    for (int cid = 0; cid < NUM_CAM; cid++)
+    {
+        const int ptsSize = vTrackInfoMonoOrb[cid].cur_pts.size();
+        std::set<ORB_SLAM3::MapPoint*>::iterator itSet;
+        vector<uchar> status;
+        status.reserve(ptsSize);
+        for (size_t i = 0; i < ptsSize; i++)
+        {
+            itSet = removePtsIds.find(vTrackInfoMonoOrb[cid].orbMPs[i]);
+            if(itSet != removePtsIds.end())
+                status.push_back(0);
+            else
+                status.push_back(1);
+        }
+
+        reduceVector(vTrackInfoMonoOrb[cid].cur_pts, status);
+        reduceVector(vTrackInfoMonoOrb[cid].cur_un_pts, status);
+        reduceVector(vTrackInfoMonoOrb[cid].track_cnt, status);
+        reduceVector(vTrackInfoMonoOrb[cid].orbMPs, status);
+
+        inliers[cid] = vTrackInfoMonoOrb[cid].cur_pts.size();
+    }
+    return inliers;
+}
 
 cv::Mat FeatureTracker::getTrackImage()
 {
     return imTrack;
 }
+
+bool FeatureTracker::getTrackInfoMonoSimple(TrackInfoMonoSimple (&trackOut)[NUM_CAM]){
+
+    for (int cid = 0; cid < NUM_CAM; cid++)
+    {
+        trackOut[cid].cur_pts = vTrackInfoMono[cid].cur_pts;
+
+        trackOut[cid].cur_un_pts = vTrackInfoMono[cid].cur_un_pts;
+        // trackOut[cid].depth = vTrackInfoMono[cid].depth;
+        trackOut[cid].depth.resize(vTrackInfoMono[cid].cur_pts.size(), -1);//暂时全-1,后面再补充实际值.
+        trackOut[cid].ids = vTrackInfoMono[cid].ids;
+        trackOut[cid].track_cnt = vTrackInfoMono[cid].track_cnt;
+    }
+    
+    return true;
+};
+bool FeatureTracker::getTrackInfoMonoOrb(TrackInfoMonoOrb (&trackOut)[NUM_CAM]){
+    for (int cid = 0; cid < NUM_CAM; cid++){
+        trackOut[cid] = vTrackInfoMonoOrb[cid];
+    }
+    return true;
+};
