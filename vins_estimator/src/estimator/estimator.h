@@ -53,7 +53,7 @@ class Estimator
     //默认就只是添加左目,单目特征
     void inputFeature(double t, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &featureFrame);
     void inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1 = cv::Mat());
-    void inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1, const FeatureTracker::TrackInfoMonoOrb (&trackOrbPre)[NUM_CAM], const std::shared_ptr<Sophus::SE3d> diffPose);
+    void inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1, const FeatureTracker::TrackInfoMonoOrb (&trackOrbPre)[NUM_CAM], const std::shared_ptr<Sophus::SE3d> diffPose, bool orbValid = false);
     void processIMU(double t, double dt, const Vector3d &linear_acceleration, const Vector3d &angular_velocity);
     // void processImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, const double header);
     // void processImage(const std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> &image, const double header);
@@ -73,7 +73,7 @@ class Estimator
     void slideWindow();
     void slideWindowNew();
     void slideWindowOld();
-    void optimization(std::shared_ptr<Sophus::SE3d> diffPosePtr = nullptr);
+    void optimization(std::shared_ptr<Sophus::SE3d> diffPosePtr = nullptr, bool orbValid = false);
     void vector2double();
     void double2vector();
     bool failureDetection();

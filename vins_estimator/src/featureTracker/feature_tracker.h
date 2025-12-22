@@ -76,6 +76,7 @@ public:
         std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1> > > > > mOfs;
         TrackInfoMonoOrb mOrbs[NUM_CAM];
         std::shared_ptr<Sophus::SE3d> diffPose = nullptr;
+        bool orbValid = false;//标记是否可以用orb的点来滑窗优化
     };
     std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>  trackImageMultiThread(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1, 
                                                                                                     const TrackInfoMonoOrb (&trackOrbPre)[NUM_CAM]);

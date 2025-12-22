@@ -174,7 +174,7 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1)
 
 //trackOrbPre:上帧的orb点
 //diffPose:orb和vins的对齐pose
-void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1, const FeatureTracker::TrackInfoMonoOrb (&trackOrbPre)[NUM_CAM], const std::shared_ptr<Sophus::SE3d> diffPose)
+void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1, const FeatureTracker::TrackInfoMonoOrb (&trackOrbPre)[NUM_CAM], const std::shared_ptr<Sophus::SE3d> diffPose, bool orbValid)
 {
     inputImageCnt++;
     cur_frame_id = getGlobalFrameId(true);    
@@ -187,6 +187,7 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1, 
     featureFrameMulti.first = t;
     featureFrameMulti.second = std::shared_ptr<FeatureTracker::TrackInfoComplex>(new FeatureTracker::TrackInfoComplex());
     featureFrameMulti.second->diffPose = diffPose;
+    featureFrameMulti.second->orbValid = orbValid;
     // std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> featureFrameMulti;//多目追踪结果
     //featureFrame[id1][i].first是本帧的追踪到的特征所属相机cid:有0和1的双目id
     //featureFrame[id1][i].second是本帧的追踪到的特征 像素px等信息    
@@ -732,7 +733,7 @@ void Estimator::processImage(const FeatureTracker::TrackInfoComplex &image, cons
         f_manager.triangulate(frame_count, Ps, Rs, tic, ric, false);//在滑窗优化前，直接提前三角化了. fix, maybe在滑窗优化后再三角化更好?
         // f_manager.triangulate(frame_count, Ps, Rs, tic, ric, true);//在滑窗优化前，直接提前三角化了. fix, maybe在滑窗优化后再三角化更好?
         // f_manager.triangulate(frame_count, Ps, Rs, tic, ric);//在滑窗优化前，直接提前三角化了. fix, maybe在滑窗优化后再三角化更好?
-        optimization(image.diffPose);
+        optimization(image.diffPose, image.orbValid);
         mMetricStatistic.timeImgOptiWin = mTicTocMetric.tocMs();
         //计算所有地图点MP的平均重投影误差,大于3个px就剔除
         set<int> removeIndex;
@@ -1312,7 +1313,7 @@ bool Estimator::failureDetection()
     return false;
 }
 
-void Estimator::optimization(std::shared_ptr<Sophus::SE3d> diffPosePtr)
+void Estimator::optimization(std::shared_ptr<Sophus::SE3d> diffPosePtr, bool orbValid)
 {
     TicToc t_whole, t_prepare;
     TicToc mTicTocCeres;
@@ -1495,6 +1496,7 @@ void Estimator::optimization(std::shared_ptr<Sophus::SE3d> diffPosePtr)
     int optOrbObsNumOK = 0;
     std::map<int, std::pair<int, double>> baErrByFrame;
     std::map<int, std::vector<std::shared_ptr<Sophus::SE3d>>> mapFramePoseInCamera;
+    for (int ldx = 0; ldx < 1 && orbValid == true; ldx++)
     for (auto &it_per_id : f_manager.featureOrb){
 
         ORB_SLAM3::MapPoint* pOrbMP = it_per_id.first;
