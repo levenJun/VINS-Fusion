@@ -178,6 +178,9 @@ void Estimator::inputImage(double t, const cv::Mat &_img, const cv::Mat &_img1, 
     cur_frame_id = getGlobalFrameId(true);    
     std::cout << "----------imageCnt:" << inputImageCnt << ",cur_frame_id=," << cur_frame_id << "----------------" << std::endl;
     std::cout << "----------img_time:" << t << std::endl;
+    if(featureBuf.size() >= 1){
+        std::cout << "inputImage warn !!!!!!!!!!!!!!! before track, featureBuf.size=," << featureBuf.size() << std::endl;
+    }
     std::pair<double, std::shared_ptr<FeatureTracker::TrackInfoComplex>> featureFrameMulti;//多目追踪结果
     featureFrameMulti.first = t;
     featureFrameMulti.second = std::shared_ptr<FeatureTracker::TrackInfoComplex>(new FeatureTracker::TrackInfoComplex());
@@ -381,8 +384,14 @@ void Estimator::processMeasurements()
         vector<pair<double, Eigen::Vector3d>> accVector, gyrVector;
         if(!featureBuf.empty())
         {
-            feature = featureBuf.front();
-            curTime = feature.first + td;//估计的同步时间差作fix
+            mBuf.lock();
+            while (!featureBuf.empty())//只处理buf的最新一帧数据,因为对于外部orb而言,拿到的vins的状态的就是最新一帧的状态.
+            {
+                feature = featureBuf.front();
+                curTime = feature.first + td;//估计的同步时间差作fix
+                featureBuf.pop();
+            }
+            mBuf.unlock();
             cout << "processMeasurements, time=," << curTime << endl;
             while(1)
             {
@@ -391,8 +400,9 @@ void Estimator::processMeasurements()
                 else
                 {
                     // printf("wait for imu ... \n");//打印数据太多
-                    if (! MULTIPLE_THREAD)
-                        return;
+                    cout << "wait for imu ..." << endl;
+                    // if (! MULTIPLE_THREAD)//不能直接返回,必须等到imu到达
+                    //     return;
                     std::chrono::milliseconds dura(5);
                     std::this_thread::sleep_for(dura);
                 }
@@ -401,9 +411,9 @@ void Estimator::processMeasurements()
             if(USE_IMU)
                 getIMUInterval(prevTime, curTime, accVector, gyrVector);
 
-            featureBuf.pop();
+            // featureBuf.pop();//在函数开头已经进行pop了
             mBuf.unlock();
-
+            if(!featureBuf.empty()) cout << "processMeasurements, 2 featureBuf.size=,=," << featureBuf.size() << endl;
             TicToc mTicTocMetric;
             if(USE_IMU)
             {
@@ -443,7 +453,8 @@ void Estimator::processMeasurements()
             mProcess.unlock();
         }
 
-        if (! MULTIPLE_THREAD)
+        // if (! MULTIPLE_THREAD)
+        if (! MULTIPLE_THREAD && featureBuf.empty())//必须把buf处理空了才结束本函数
             break;
 
         std::chrono::milliseconds dura(2);
