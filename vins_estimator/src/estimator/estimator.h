@@ -73,7 +73,7 @@ class Estimator
     void slideWindow();
     void slideWindowNew();
     void slideWindowOld();
-    void optimization();
+    void optimization(std::shared_ptr<Sophus::SE3d> diffPosePtr = nullptr);
     void vector2double();
     void double2vector();
     bool failureDetection();
@@ -84,6 +84,7 @@ class Estimator
     void getPoseInWorldFrameOfCamera(int index, Eigen::Matrix4d &T, int cid = 0);
     void getPoseInWorldFrame(int index, Eigen::Matrix4d &T);
     Sophus::SE3d transPoseM4toSophus(Eigen::Matrix4d &T);
+    void getVelInWorldFrame(Eigen::Vector3d& vel);
     void predictPtsInNextFrame();
     void outliersRejection(set<int> &removeIndex);
     void outliersRejection(set<ORB_SLAM3::MapPoint*> &removeIndexOrb);

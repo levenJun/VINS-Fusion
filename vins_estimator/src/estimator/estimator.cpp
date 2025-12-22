@@ -11,6 +11,7 @@
 #ifndef ANDROID_ON_
 #include "../utility/visualization.h"
 #endif
+#include "factor/projectionORBOneFrameOneCamFactor.h"
 #include "MapPoint.h"
 Estimator::Estimator(): f_manager{Rs}
 {
@@ -111,6 +112,7 @@ void Estimator::setParameter()
     ProjectionTwoFrameOneCamFactor::sqrt_info = FOCAL_LENGTH / 1.5 * Matrix2d::Identity();//这里信息矩阵可以进一步修正:真实配置的焦距;考虑畸变模型后
     ProjectionTwoFrameTwoCamFactor::sqrt_info = FOCAL_LENGTH / 1.5 * Matrix2d::Identity();
     ProjectionOneFrameTwoCamFactor::sqrt_info = FOCAL_LENGTH / 1.5 * Matrix2d::Identity();
+    projectionORBOneFrameOneCamFactor::sqrt_info = FOCAL_LENGTH / 1.5 * Matrix2d::Identity();
     td = TD;
     g = G;
     cout << "set g " << g.transpose() << endl;
@@ -730,7 +732,7 @@ void Estimator::processImage(const FeatureTracker::TrackInfoComplex &image, cons
         f_manager.triangulate(frame_count, Ps, Rs, tic, ric, false);//在滑窗优化前，直接提前三角化了. fix, maybe在滑窗优化后再三角化更好?
         // f_manager.triangulate(frame_count, Ps, Rs, tic, ric, true);//在滑窗优化前，直接提前三角化了. fix, maybe在滑窗优化后再三角化更好?
         // f_manager.triangulate(frame_count, Ps, Rs, tic, ric);//在滑窗优化前，直接提前三角化了. fix, maybe在滑窗优化后再三角化更好?
-        optimization();
+        optimization(image.diffPose);
         mMetricStatistic.timeImgOptiWin = mTicTocMetric.tocMs();
         //计算所有地图点MP的平均重投影误差,大于3个px就剔除
         set<int> removeIndex;
@@ -1310,7 +1312,7 @@ bool Estimator::failureDetection()
     return false;
 }
 
-void Estimator::optimization()
+void Estimator::optimization(std::shared_ptr<Sophus::SE3d> diffPosePtr)
 {
     TicToc t_whole, t_prepare;
     TicToc mTicTocCeres;
@@ -1473,6 +1475,136 @@ void Estimator::optimization()
             }
             f_m_cnt++;
         }
+    }
+
+    std::pair<bool,Sophus::SE3d> applyDiffPose = {false, Sophus::SE3d()};
+    if(!diffPosePtr){
+        applyDiffPose.first = false;
+    }else{
+        double diffTr3v_n = diffPosePtr->so3().log().norm();
+        double diffTt3v_n = diffPosePtr->translation().norm();
+        applyDiffPose.first = (diffTr3v_n > 1. * M_PI/180.0 || diffTt3v_n > 1.0e-2);
+        applyDiffPose.second = *diffPosePtr;
+    }
+    applyDiffPose.first = false;
+    applyDiffPose.second = Sophus::SE3d();//已经提前完成其它状态变换了，这里不需要再对MP点变换!
+
+    int optOrbNum = 0;
+    int optOrbNumOK = 0;
+    int optOrbObsNum = 0;
+    int optOrbObsNumOK = 0;
+    std::map<int, std::pair<int, double>> baErrByFrame;
+    std::map<int, std::vector<std::shared_ptr<Sophus::SE3d>>> mapFramePoseInCamera;
+    for (auto &it_per_id : f_manager.featureOrb){
+
+        ORB_SLAM3::MapPoint* pOrbMP = it_per_id.first;
+        if(!pOrbMP || pOrbMP->isBad(false)){
+            continue;
+        }
+        if(pOrbMP != it_per_id.second.orbMPptr){
+            std::cout << "optimization err xx1, pOrbMP=," << pOrbMP << ",it_per_id.orbMPptr=," << it_per_id.second.orbMPptr << std::endl;
+            assert(false);
+            continue;
+        }
+        // if(it_per_id.second.obs.size() < 2){
+        if(it_per_id.second.obs.size() < 1){
+            continue;
+        }
+        if(!diffPosePtr) continue;//表示传入的orb点暂时不用作滑窗优化
+
+        optOrbNum++;
+        // continue;
+        const Eigen::Vector3d& orbPoseOri = pOrbMP->GetWorldPos().cast<double>();
+        const Eigen::Vector3d& orbPose = applyDiffPose.first? applyDiffPose.second*orbPoseOri : orbPoseOri;
+        const int startFrame = it_per_id.second.start_frame;
+
+        if(true)//做debug验证
+        {
+            bool isOKOrbMP = false;
+            std::pair<int, double> baErrByMP = {0,0.0};
+            for (auto &it_per_frame : it_per_id.second.obs)//依次遍历所有观测.
+            {
+                const int curFrame = startFrame + it_per_frame.first;
+                //check 一下 curFrame
+                if(it_per_frame.second.empty()) continue;
+                for (int xid = 0, xsize = it_per_frame.second.size(); xid < xsize; xid++)
+                {
+                    optOrbObsNum++;
+                    const Vector3d& pts_i = it_per_frame.second[xid].point;
+                    const int main_cam = it_per_frame.second[xid].main_cam;
+                    
+
+                    //确定对应的pose
+                    auto itSearchPose = mapFramePoseInCamera.find(curFrame);
+                    if(itSearchPose == mapFramePoseInCamera.end()){
+                        mapFramePoseInCamera[curFrame] = std::vector<std::shared_ptr<Sophus::SE3d>>();
+                        mapFramePoseInCamera[curFrame].resize(NUM_CAM, nullptr);
+                        itSearchPose = mapFramePoseInCamera.find(curFrame);
+                    }
+                    if(itSearchPose->second[main_cam] == nullptr){
+                        Eigen::Matrix4d posei;
+                        getPoseInWorldFrameOfCamera(curFrame, posei, main_cam);
+                        Sophus::SE3d poseSi = transPoseM4toSophus(posei);                            
+                        itSearchPose->second[main_cam] = std::shared_ptr<Sophus::SE3d>(new Sophus::SE3d());
+                        *itSearchPose->second[main_cam] = poseSi;
+                    }
+                    
+                    // Eigen::Matrix4d posei;
+                    // getPoseInWorldFrameOfCamera(curFrame, posei, main_cam);
+                    // Sophus::SE3d poseSi = transPoseM4toSophus(posei);
+                    // Vector3d pts_i_cam = poseSi.inverse() * orbPose;
+                    Vector3d pts_i_cam = itSearchPose->second[main_cam]->inverse() * orbPose;
+                    Vector2d baErrZ1 = (pts_i_cam / pts_i_cam.z()).head<2>() - pts_i.head<2>();
+
+                    double rx = baErrZ1.x();
+                    double ry = baErrZ1.y();
+                    double err = sqrt(rx * rx + ry * ry);
+
+                    if(err*FOCAL_LENGTH > 20){//关键:误差的观测直接不要!
+                        continue;
+                    }
+                    baErrByMP.first++;
+                    baErrByMP.second += err;
+                    
+                    auto itSearch = baErrByFrame.find(curFrame);
+                    if(itSearch == baErrByFrame.end()){
+                        baErrByFrame[curFrame] = {0,0.0};
+                        itSearch = baErrByFrame.find(curFrame);
+                    }
+                    itSearch->second.first++;
+                    itSearch->second.second += err;
+
+                    projectionORBOneFrameOneCamFactor *f_td = new projectionORBOneFrameOneCamFactor(pts_i, orbPose);
+                    problem.AddResidualBlock(f_td, loss_function, para_Pose[curFrame], para_Ex_Pose[main_cam]);
+                    optOrbObsNumOK++;
+                    isOKOrbMP = true;
+                }
+            }
+            if(isOKOrbMP) optOrbNumOK++;
+            std::cout << "baErrByMP pOrbMP.id=," << pOrbMP << ",num=," << baErrByMP.first << ",ave_err=," << (baErrByMP.second/baErrByMP.first)*FOCAL_LENGTH << std::endl;
+            continue;
+        }
+
+        /*
+        for (auto &it_per_frame : it_per_id.second.obs)//依次遍历所有观测.
+        {
+            const int curFrame = startFrame + it_per_frame.first;
+            //check 一下 curFrame
+            if(it_per_frame.second.empty()) continue;
+            for (int xid = 0, xsize = it_per_frame.second.size(); xid < xsize; xid++)
+            {
+                const Vector3d& pts_i = it_per_frame.second[xid].point;
+                const int main_cam = it_per_frame.second[xid].main_cam;
+                projectionORBOneFrameOneCamFactor *f_td = new projectionORBOneFrameOneCamFactor(pts_i, orbPose);
+                problem.AddResidualBlock(f_td, loss_function, para_Pose[curFrame], para_Ex_Pose[main_cam]);
+                optOrbObsNum++;
+            }
+        }
+        */
+    }
+
+    for(auto& it : baErrByFrame){
+        std::cout << "baErrByFrame frame.id=," << it.first << ",num=," << it.second.first << ",ave_err=," << (it.second.first!=0? (it.second.second/it.second.first)*FOCAL_LENGTH:-1) << std::endl;
     }
 
     ROS_DEBUG("visual measurement count: %d", f_m_cnt);
@@ -1760,6 +1892,14 @@ void Estimator::optimization()
     }
     //printf("whole marginalization costs: %f \n", t_whole_marginalization.toc());
     //printf("whole time for ceres: %f \n", t_whole.toc());
+    if(diffPosePtr)
+    {
+        Eigen::Vector3d v3R = diffPosePtr->so3().log();
+        Eigen::Vector3d v3t = diffPosePtr->translation();
+        std::cout << "vins optimization, v3R=," << v3R(0) << "," << v3R(1) << "," << v3R(2) << "," << v3R.norm()
+                    << ",v3t=," << v3t(0) << "," << v3t(1) << "," << v3t(2) << "," << v3t.norm()
+                    << ",optOrbNum=," << optOrbNum << ",optOrbNumOK=," << optOrbNumOK << ",optOrbObsNum=," << optOrbObsNum << ",optOrbObsNumOK=," << optOrbObsNumOK << std::endl;
+    }
 }
 
 //1,把实际状态进行滑窗修改:R,P,V,Ba,Bg, 另外还有预积分测量,imu的原始dt,acc,gyro
@@ -1935,6 +2075,10 @@ void Estimator::getPoseInWorldFrame(int index, Eigen::Matrix4d &T)
 Sophus::SE3d Estimator::transPoseM4toSophus(Eigen::Matrix4d &T){
     Eigen::Quaterniond poseQ = Eigen::Quaterniond(T.block<3,3>(0,0));
     return Sophus::SE3d(poseQ,  T.block<3,1>(0,3));
+};
+
+void Estimator::getVelInWorldFrame(Eigen::Vector3d& vel){
+    vel = Vs[frame_count];
 };
 
 void Estimator::predictPtsInNextFrame()
@@ -2116,8 +2260,10 @@ void Estimator::outliersRejection(set<ORB_SLAM3::MapPoint*> &removeIndexOrb){
     //删除bad点
     //删除观测总数为0的点
     //删除重投影误差大的点
-    int remove1 = 0,remove2 = 0,remove3 = 0,remove4 = 0;
+    int remove1 = 0,remove2 = 0,remove3 = 0,remove4 = 0,remove5 = 0;
     removeIndexOrb.clear();
+    std::map<int, std::vector<std::shared_ptr<Sophus::SE3d>>> mapFramePoseInCamera;//pose缓存,减少pose获取计算次数
+    std::pair<int, double> baErrByMP;
     for (auto &it_per_id : f_manager.featureOrb){
         if(!it_per_id.first){
             removeIndexOrb.insert(it_per_id.first);
@@ -2142,11 +2288,101 @@ void Estimator::outliersRejection(set<ORB_SLAM3::MapPoint*> &removeIndexOrb){
         }
         if(endIdx > WINDOW_SIZE){
             std::cout << "outliersRejection err 1, endIdx=," << endIdx << std::endl;
+            continue;
+        }
+
+        //计算重投影Err
+        //只计算最近5个obs:
+        // 最近1个obs Err大于30就删除obs,如果总obs小于5个就直接删除MP
+        // 计算最近5个obs的平均Err,大于30就删除MP
+        // const double badErrMax = 30.0;
+        const double badErrMax = 20.0;
+        const int checkNumMax = 5;
+        bool badMpByErr = false;
+        for (int ldx = 0; ldx < 1; ldx++)
+        {
+            if(it_per_id.second.obs.size() < 1){//只有1个观测,就暂时不去check
+                continue;
+            }
+
+            const int endIdx = it_per_id.second.start_frame + it_per_id.second.obs.rbegin()->first;
+            if(endIdx < frame_count - checkNumMax){//被check了好几帧了,不再继续check
+                continue;
+            }   
+            // if(diffPosePtr)
+            {
+                baErrByMP.first = 0; baErrByMP.second = 0.0;
+                ORB_SLAM3::MapPoint* pOrbMP = it_per_id.first;
+                const Eigen::Vector3d& orbPoseOri = pOrbMP->GetWorldPos().cast<double>();
+                // const Eigen::Vector3d& orbPose = diffPosePtr? *diffPosePtr * orbPoseOri : orbPoseOri;
+                const Eigen::Vector3d& orbPose = orbPoseOri;                
+                const int startFrame = it_per_id.second.start_frame;
+
+                //逆序遍历            
+                for (auto it_per_frame = it_per_id.second.obs.rbegin(); it_per_frame != it_per_id.second.obs.rend(); ++it_per_frame){
+                    const int curFrame = startFrame + it_per_frame->first;
+                    if(curFrame <= frame_count - checkNumMax){//最多看最近5帧的观测
+                        break;
+                    }
+                    //check 一下 curFrame
+                    // if(it_per_frame->second.empty()){
+                    //     continue;
+                    // } 
+                    for (int xid = 0, xsize = it_per_frame->second.size(); xid < xsize; xid++)
+                    {
+
+                        const Vector3d& pts_i = it_per_frame->second[xid].point;
+                        const int main_cam = it_per_frame->second[xid].main_cam;
+                        
+                        //确定对应的pose
+                        auto itSearchPose = mapFramePoseInCamera.find(curFrame);
+                        if(itSearchPose == mapFramePoseInCamera.end()){
+                            mapFramePoseInCamera[curFrame] = std::vector<std::shared_ptr<Sophus::SE3d>>();
+                            mapFramePoseInCamera[curFrame].resize(NUM_CAM, nullptr);
+                            itSearchPose = mapFramePoseInCamera.find(curFrame);
+                        }
+                        if(itSearchPose->second[main_cam] == nullptr){
+                            Eigen::Matrix4d posei;
+                            getPoseInWorldFrameOfCamera(curFrame, posei, main_cam);
+                            Sophus::SE3d poseSi = transPoseM4toSophus(posei);                            
+                            itSearchPose->second[main_cam] = std::shared_ptr<Sophus::SE3d>(new Sophus::SE3d());
+                            *itSearchPose->second[main_cam] = poseSi.inverse();
+                        }
+                        
+                        Vector3d pts_i_cam = *itSearchPose->second[main_cam] * orbPose;
+                        Vector2d baErrZ1 = (pts_i_cam / pts_i_cam.z()).head<2>() - pts_i.head<2>();
+
+                        double rx = baErrZ1.x();
+                        double ry = baErrZ1.y();
+                        double err = sqrt(rx * rx + ry * ry);
+
+                        // if(err*FOCAL_LENGTH > badErrMax){//关键:误差的观测直接不要!
+                        //     continue;
+                        // }
+                        baErrByMP.first++;
+                        baErrByMP.second += err;
+                    }
+                    // if(it_per_frame == it_per_id.second.obs.rbegin()){
+                    //     if(baErrByMP.first == 0 || (baErrByMP.second/baErrByMP.first) > badErrMax){
+                    //         removeIndexOrbOnlyObs.insert(pOrbMP);
+                    //     }
+                    // }
+                }
+                if(baErrByMP.first > 0 && (baErrByMP.second/baErrByMP.first) > badErrMax){
+                    badMpByErr = true;
+                }
+            }
+        }
+        if(badMpByErr){
+            removeIndexOrb.insert(it_per_id.first);
+            remove5++;
+            std::cout << "badMpByErr, MP=," << it_per_id.first << ",badObs=," << baErrByMP.first << ",meanErr=," << (baErrByMP.second/baErrByMP.first) << std::endl;
+            continue;
         }
 
     }
     std::cout << "Estimator removeIndexOrb.size=," << removeIndexOrb.size() << ",remove1=," << remove1 << ",remove2=," 
-                << remove2 << ",remove3=," << remove3 << ",remove4=," << remove4 << std::endl;
+                << remove2 << ",remove3=," << remove3 << ",remove4=," << remove4 << ",remove5=," << remove5 << std::endl;
 };
 
 void Estimator::fastPredictIMU(double t, Eigen::Vector3d linear_acceleration, Eigen::Vector3d angular_velocity)

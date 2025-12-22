@@ -1013,6 +1013,10 @@ std::vector<int> FeatureTracker::removeOutliers(set<int> &removePtsIds)
 {
     std::vector<int> inliers;
     inliers.resize(NUM_CAM);
+    if(removePtsIds.empty()){
+        for (int cid = 0; cid < NUM_CAM; cid++) inliers[cid] = vTrackInfoMonoOrb[cid].cur_pts.size();
+        return inliers;
+    }
     for (int cid = 0; cid < NUM_CAM; cid++)
     {
         std::set<int>::iterator itSet;

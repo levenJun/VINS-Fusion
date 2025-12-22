@@ -897,6 +897,7 @@ void FeatureManager::triangulate2(int frameCnt, Vector3d Ps[], Matrix3d Rs[], Ve
 
 void FeatureManager::removeOutlier(set<int> &outlierIndex)
 {
+    if(outlierIndex.empty()) return;
     std::set<int>::iterator itSet;
     for (auto it = feature.begin(), it_next = feature.begin();
          it != feature.end(); it = it_next)
@@ -913,6 +914,7 @@ void FeatureManager::removeOutlier(set<int> &outlierIndex)
 }
 void FeatureManager::removeOutlier(set<ORB_SLAM3::MapPoint*> &outlierIndex)
 {
+    if(outlierIndex.empty()) return;
     std::set<ORB_SLAM3::MapPoint*>::iterator itSet;
     for (auto& it:outlierIndex)
     {
@@ -1106,7 +1108,7 @@ void FeatureManager::removeFront(int frame_count)
                 }
             }
             //确定次新帧和最新帧观测,全部直接从obs中删除
-            std::cout << "removeFront, eraseObs.size=," << eraseObs.size() << ",keepObs.size=," << keepObs.size() << std::endl;
+            // std::cout << "removeFront, eraseObs.size=," << eraseObs.size() << ",keepObs.size=," << keepObs.size() << std::endl;
             if(eraseObs.empty()){
                 std::cout << "removeFront err 2, eraseObs is empty,frame_count=," << frame_count << std::endl;
             }
