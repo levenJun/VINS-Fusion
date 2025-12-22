@@ -340,6 +340,7 @@ bool Estimator::getIMUInterval(double t0, double t1, vector<pair<double, Eigen::
     //printf("get imu from %f %f\n", t0, t1);
     //printf("imu fornt time %f   imu end time %f\n", accBuf.front().first, accBuf.back().first);
     if(t1 <= accBuf.back().first)
+    // if(t1 - 3.e-3 <= accBuf.back().first)//imu允许3ms延迟,后面再完善逻辑
     {
         while (accBuf.front().first <= t0)
         {
@@ -358,7 +359,7 @@ bool Estimator::getIMUInterval(double t0, double t1, vector<pair<double, Eigen::
     }
     else
     {
-        printf("wait for imu\n");
+        printf("wait for imu 2\n");
         return false;
     }
     return true;
@@ -367,6 +368,7 @@ bool Estimator::getIMUInterval(double t0, double t1, vector<pair<double, Eigen::
 bool Estimator::IMUAvailable(double t)
 {
     if(!accBuf.empty() && t <= accBuf.back().first)
+    // if(!accBuf.empty() && accBuf.back().first - t >= -3.e-3)//imu允许3ms延迟,后面再完善逻辑
         return true;
     else
         return false;
@@ -393,6 +395,13 @@ void Estimator::processMeasurements()
             }
             mBuf.unlock();
             cout << "processMeasurements, time=," << curTime << endl;
+
+            // 此处就进入滑窗线程了
+            // 先提前应用diffPose
+            if(solver_flag == Estimator::SolverFlag::NON_LINEAR)
+            {
+                applyDiffPoseAll(feature.second->diffPose);
+            }
             while(1)
             {
                 if ((!USE_IMU  || IMUAvailable(feature.first + td)))
@@ -529,6 +538,45 @@ void Estimator::processIMU(double t, double dt, const Vector3d &linear_accelerat
     acc_0 = linear_acceleration;
     gyr_0 = angular_velocity; 
 }
+
+bool Estimator::applyDiffPoseAll(std::shared_ptr<Sophus::SE3d> diffPosePtr){
+    if(!diffPosePtr) return false;
+    double diffTr3v_n = diffPosePtr->so3().log().norm();
+    double diffTt3v_n = diffPosePtr->translation().norm();
+    
+    //处理所有的滑窗姿态
+    Sophus::SE3d diffPose = diffPosePtr->inverse();
+    for (int i = 0; i <= WINDOW_SIZE; i++){
+        Quaterniond q{Rs[i]};
+        Sophus::SE3d oriPose = Sophus::SE3d(q, Ps[i]);
+        Sophus::SE3d alignedPose = diffPose * oriPose;
+        Vector3d alignedPoseT = alignedPose.translation();
+        Quaterniond alignedPoseq = alignedPose.so3().unit_quaternion();
+
+        Rs[i] = alignedPoseq.toRotationMatrix();
+        Ps[i] = alignedPoseT;
+
+        if(USE_IMU)
+        {
+            Vector3d oriV = Vs[i];
+            Vector3d alignedV = diffPose.so3() * oriV;
+            Vs[i] = alignedV;
+        }
+    }
+    // g = diffPose.so3() * g;
+
+    //处理边缘化约束
+    bool bDiffMargin = false;
+    if(diffTr3v_n > 10 * M_PI/180.0 || diffTt3v_n > 0.3){
+        if (last_marginalization_info){
+            delete last_marginalization_info;      
+            last_marginalization_info = nullptr;
+        }
+        bDiffMargin = true;
+    }
+    std::cout << "applyDiffPoseAll, cur_frame_id=," << cur_frame_id << ",bDiffMargin=," << bDiffMargin << ",diffTr3v_n=," << diffTr3v_n << ",diffTt3v_n=," << diffTt3v_n << std::endl;
+    return true;
+};
 
 // void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, const double header)
 // void Estimator::processImage(const std::vector<map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>> &image, const double header)

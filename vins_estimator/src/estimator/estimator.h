@@ -95,6 +95,8 @@ class Estimator
     bool IMUAvailable(double t);
     void initFirstIMUPose(vector<pair<double, Eigen::Vector3d>> &accVector);
 
+    //vins内部整体状态都基于diffPose变换
+    bool applyDiffPoseAll(std::shared_ptr<Sophus::SE3d> diffPosePtr = nullptr);
     enum SolverFlag
     {
         INITIAL,
